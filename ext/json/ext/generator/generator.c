@@ -735,20 +735,41 @@ static void generate_json_array(FBuffer *buffer, VALUE Vstate, JSON_Generator_St
     fbuffer_append_char(buffer, ']');
 }
 
-static int usascii_encindex, utf8_encindex;
+static int usascii_encindex, utf8_encindex, binary_encindex;
 
-static int enc_utf8_compatible_p(int enc_idx)
+static inline int enc_utf8_compatible_p(int enc_idx)
 {
     if (enc_idx == usascii_encindex) return 1;
     if (enc_idx == utf8_encindex) return 1;
     return 0;
 }
 
+static inline VALUE ensure_valid_encoding(VALUE str)
+{
+    int encindex = RB_ENCODING_GET(str);
+    if (RB_UNLIKELY(!enc_utf8_compatible_p(encindex))) {
+        if (encindex == binary_encindex) {
+            VALUE utf8_string = rb_enc_associate_index(rb_str_dup(str), utf8_encindex);
+            switch (rb_enc_str_coderange(utf8_string)) {
+                case ENC_CODERANGE_7BIT:
+                case ENC_CODERANGE_VALID:
+                    return utf8_string;
+                    break;
+            }
+        }
+
+        // TODO: opt
+        // We could use rb_str_conv_enc to avoid `rb_funcall` but it doesn't raise on error.
+        // But we're basically in a very unliklely path, so it's preferable to produce a nicer
+        // exception.
+        str = rb_funcall(str, rb_intern("encode"), 1, rb_const_get(rb_path2class("Encoding"), rb_intern("UTF_8")));
+    }
+    return str;
+}
+
 static void generate_json_string(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
 {
-    if (!enc_utf8_compatible_p(RB_ENCODING_GET(obj))) {
-        obj = rb_str_export_to_enc(obj, rb_utf8_encoding());
-    }
+    obj = ensure_valid_encoding(obj);
 
     fbuffer_append_char(buffer, '"');
 
@@ -1472,4 +1493,5 @@ void Init_generator(void)
 
     usascii_encindex = rb_usascii_encindex();
     utf8_encindex = rb_utf8_encindex();
+    binary_encindex = rb_ascii8bit_encindex();
 }
