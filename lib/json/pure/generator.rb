@@ -339,6 +339,7 @@ module JSON
           private def fast_serialize_string(string, buf) # :nodoc:
             buf << '"'
             string = string.encode(::Encoding::UTF_8) unless string.encoding == ::Encoding::UTF_8
+            raise GeneratorError, "source sequence is illegal/malformed utf-8" unless string.valid_encoding?
 
             if /["\\\x0-\x1f]/n.match?(string)
               buf << string.gsub(/["\\\x0-\x1f]/n, MAP)
