@@ -1,4 +1,3 @@
-#include "../fbuffer/fbuffer.h"
 #include "generator.h"
 
 #ifndef RB_UNLIKELY
@@ -8,6 +7,116 @@
 static VALUE mJSON, cState, mString_Extend, eGeneratorError, eNestingError, Encoding_UTF_8;
 
 static ID i_to_s, i_to_json, i_new, i_pack, i_unpack, i_create_id, i_extend, i_encode;
+
+// TODO: account for terminator
+#define SBUFFER_INITIAL_LENGTH_DEFAULT 512
+
+typedef struct SBufferStruct {
+    long len;
+    long capa;
+    VALUE str;
+    char *ptr;
+} SBuffer;
+
+static inline void sbuffer_inc_capa(SBuffer *buffer, long requested)
+{
+    if (RB_UNLIKELY(requested > buffer->capa - buffer->len)) {
+        long required;
+
+        for (required = buffer->capa; requested > required - buffer->len; required <<= 1);
+
+        if (required > buffer->capa) {
+            rb_str_resize(buffer->str, required);
+            buffer->capa = required;
+            buffer->ptr = RSTRING_PTR(buffer->str);
+        }
+    }
+}
+
+static inline void sbuffer_append(SBuffer *buffer, const char *newstr, long len)
+{
+    if (len > 0) {
+        sbuffer_inc_capa(buffer, len);
+        MEMCPY(buffer->ptr + buffer->len, newstr, char, len);
+        buffer->len += len;
+    }
+}
+
+static void sbuffer_append_str(SBuffer *buffer, VALUE str)
+{
+    sbuffer_append(buffer, StringValuePtr(str), RSTRING_LEN(str));
+    RB_GC_GUARD(str);
+}
+
+static void sbuffer_append_char(SBuffer *buffer, char newchr)
+{
+    sbuffer_inc_capa(buffer, 1);
+    *(buffer->ptr + buffer->len) = newchr;
+    buffer->len++;
+}
+
+static long fltoa(long number, char *buf)
+{
+    static const char digits[] = "0123456789";
+    long sign = number;
+    char* tmp = buf;
+
+    if (sign < 0) number = -number;
+    do *tmp-- = digits[number % 10]; while (number /= 10);
+    if (sign < 0) *tmp-- = '-';
+    return buf - tmp;
+}
+
+#define LONG_BUFFER_SIZE 20
+static void sbuffer_append_long(SBuffer *buffer, long number)
+{
+    char buf[LONG_BUFFER_SIZE];
+    char *buf_end = buf + LONG_BUFFER_SIZE;
+    long len = fltoa(number, buf_end - 1);
+    sbuffer_append(buffer, buf_end - len, len);
+}
+
+static VALUE sbuffer_to_s(SBuffer *buffer)
+{
+    rb_str_resize(buffer->str, buffer->len);
+    return buffer->str;
+}
+
+static void generate_json(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
+static void generate_json_object(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
+static void generate_json_array(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
+static void generate_json_string(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
+static void generate_json_integer(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
+static void generate_json_float(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
+static void generate_json_true(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
+static void generate_json_false(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
+static void generate_json_null(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
+
+#define GET_STATE_TO(self, state) \
+    TypedData_Get_Struct(self, JSON_Generator_State, &JSON_Generator_State_type, state)
+
+#define GET_STATE(self)                       \
+    JSON_Generator_State *state;              \
+    GET_STATE_TO(self, state)
+
+#define GENERATE_JSON(type)                                                                     \
+    VALUE Vstate;                                                                               \
+    JSON_Generator_State *state;                                                                \
+                                                                                                \
+    rb_scan_args(argc, argv, "01", &Vstate);                                                    \
+    Vstate = cState_from_state_s(cState, Vstate);                                               \
+    TypedData_Get_Struct(Vstate, JSON_Generator_State, &JSON_Generator_State_type, state);      \
+    VALUE string = rb_utf8_str_new(NULL, 0);                                                    \
+    rb_str_resize(string, state->buffer_initial_length - 1);                                    \
+    SBuffer buffer = {                                                                          \
+        .capa = state->buffer_initial_length - 1,                                               \
+        .str = string,                                                                          \
+        .ptr = RSTRING_PTR(string),                                                             \
+    };                                                                                          \
+                                                                                                \
+    generate_json_##type(&buffer, Vstate, state, self);                                         \
+    return sbuffer_to_s(&buffer);
+
 
 /* Converts in_string to a JSON string (without the wrapping '"'
  * characters) in FBuffer out_buffer.
@@ -25,7 +134,7 @@ static ID i_to_s, i_to_json, i_new, i_pack, i_unpack, i_create_id, i_extend, i_e
  * Everything else (should be UTF-8) is just passed through and
  * appended to the result.
  */
-static void convert_UTF8_to_JSON(FBuffer *out_buffer, VALUE str, const char escape_table[256], bool out_script_safe)
+static void convert_UTF8_to_JSON(SBuffer *out_buffer, VALUE str, const char escape_table[256], bool out_script_safe)
 {
     const char *hexdig = "0123456789abcdef";
     char scratch[12] = { '\\', 'u', 0, 0, 0, 0, '\\', 'u' };
@@ -35,7 +144,7 @@ static void convert_UTF8_to_JSON(FBuffer *out_buffer, VALUE str, const char esca
 
     unsigned long beg = 0, pos = 0;
 
-#define FLUSH_POS(bytes) if (pos > beg) { fbuffer_append(out_buffer, &ptr[beg], pos - beg); } pos += bytes; beg = pos;
+#define FLUSH_POS(bytes) if (pos > beg) { sbuffer_append(out_buffer, &ptr[beg], pos - beg); } pos += bytes; beg = pos;
 
     while (pos < len) {
         unsigned char ch = ptr[pos];
@@ -50,20 +159,20 @@ static void convert_UTF8_to_JSON(FBuffer *out_buffer, VALUE str, const char esca
                 case 1: {
                     FLUSH_POS(1);
                     switch (ch) {
-                        case '"':  fbuffer_append(out_buffer, "\\\"", 2); break;
-                        case '\\': fbuffer_append(out_buffer, "\\\\", 2); break;
-                        case '/':  fbuffer_append(out_buffer, "\\/", 2); break;
-                        case '\b': fbuffer_append(out_buffer, "\\b", 2); break;
-                        case '\f': fbuffer_append(out_buffer, "\\f", 2); break;
-                        case '\n': fbuffer_append(out_buffer, "\\n", 2); break;
-                        case '\r': fbuffer_append(out_buffer, "\\r", 2); break;
-                        case '\t': fbuffer_append(out_buffer, "\\t", 2); break;
+                        case '"':  sbuffer_append(out_buffer, "\\\"", 2); break;
+                        case '\\': sbuffer_append(out_buffer, "\\\\", 2); break;
+                        case '/':  sbuffer_append(out_buffer, "\\/", 2); break;
+                        case '\b': sbuffer_append(out_buffer, "\\b", 2); break;
+                        case '\f': sbuffer_append(out_buffer, "\\f", 2); break;
+                        case '\n': sbuffer_append(out_buffer, "\\n", 2); break;
+                        case '\r': sbuffer_append(out_buffer, "\\r", 2); break;
+                        case '\t': sbuffer_append(out_buffer, "\\t", 2); break;
                         default: {
                             scratch[2] = hexdig[ch >> 12];
                             scratch[3] = hexdig[(ch >> 8) & 0xf];
                             scratch[4] = hexdig[(ch >> 4) & 0xf];
                             scratch[5] = hexdig[ch & 0xf];
-                            fbuffer_append(out_buffer, scratch, 6);
+                            sbuffer_append(out_buffer, scratch, 6);
                             break;
                         }
                     }
@@ -75,11 +184,11 @@ static void convert_UTF8_to_JSON(FBuffer *out_buffer, VALUE str, const char esca
                         unsigned char b3 = ptr[pos + 2];
                         if (b3 == 0xA8) {
                             FLUSH_POS(3);
-                            fbuffer_append(out_buffer, "\\u2028", 6);
+                            sbuffer_append(out_buffer, "\\u2028", 6);
                             break;
                         } else if (b3 == 0xA9) {
                             FLUSH_POS(3);
-                            fbuffer_append(out_buffer, "\\u2029", 6);
+                            sbuffer_append(out_buffer, "\\u2029", 6);
                             break;
                         }
                     }
@@ -96,7 +205,7 @@ static void convert_UTF8_to_JSON(FBuffer *out_buffer, VALUE str, const char esca
 #undef FLUSH_POS
 
     if (beg < len) {
-        fbuffer_append(out_buffer, &ptr[beg], len - beg);
+        sbuffer_append(out_buffer, &ptr[beg], len - beg);
     }
 
     RB_GC_GUARD(str);
@@ -152,7 +261,7 @@ static const char script_safe_escape_table[256] = {
     4,4,4,4,4,4,4,4,5,5,5,5,6,6,1,1,
 };
 
-static void convert_ASCII_to_JSON(FBuffer *out_buffer, VALUE str, const char escape_table[256])
+static void convert_ASCII_to_JSON(SBuffer *out_buffer, VALUE str, const char escape_table[256])
 {
     const char *hexdig = "0123456789abcdef";
     char scratch[12] = { '\\', 'u', 0, 0, 0, 0, '\\', 'u' };
@@ -167,25 +276,25 @@ static void convert_ASCII_to_JSON(FBuffer *out_buffer, VALUE str, const char esc
         /* JSON encoding */
         if (escape_table[ch]) {
             if (pos > beg) {
-                fbuffer_append(out_buffer, &ptr[beg], pos - beg);
+                sbuffer_append(out_buffer, &ptr[beg], pos - beg);
             }
 
             beg = pos + 1;
             switch (ch) {
-                case '"':  fbuffer_append(out_buffer, "\\\"", 2); break;
-                case '\\': fbuffer_append(out_buffer, "\\\\", 2); break;
-                case '/':  fbuffer_append(out_buffer, "\\/", 2); break;
-                case '\b': fbuffer_append(out_buffer, "\\b", 2); break;
-                case '\f': fbuffer_append(out_buffer, "\\f", 2); break;
-                case '\n': fbuffer_append(out_buffer, "\\n", 2); break;
-                case '\r': fbuffer_append(out_buffer, "\\r", 2); break;
-                case '\t': fbuffer_append(out_buffer, "\\t", 2); break;
+                case '"':  sbuffer_append(out_buffer, "\\\"", 2); break;
+                case '\\': sbuffer_append(out_buffer, "\\\\", 2); break;
+                case '/':  sbuffer_append(out_buffer, "\\/", 2); break;
+                case '\b': sbuffer_append(out_buffer, "\\b", 2); break;
+                case '\f': sbuffer_append(out_buffer, "\\f", 2); break;
+                case '\n': sbuffer_append(out_buffer, "\\n", 2); break;
+                case '\r': sbuffer_append(out_buffer, "\\r", 2); break;
+                case '\t': sbuffer_append(out_buffer, "\\t", 2); break;
                 default:
                     scratch[2] = hexdig[ch >> 12];
                     scratch[3] = hexdig[(ch >> 8) & 0xf];
                     scratch[4] = hexdig[(ch >> 4) & 0xf];
                     scratch[5] = hexdig[ch & 0xf];
-                    fbuffer_append(out_buffer, scratch, 6);
+                    sbuffer_append(out_buffer, scratch, 6);
             }
         }
 
@@ -193,13 +302,13 @@ static void convert_ASCII_to_JSON(FBuffer *out_buffer, VALUE str, const char esc
     }
 
     if (beg < len) {
-        fbuffer_append(out_buffer, &ptr[beg], len - beg);
+        sbuffer_append(out_buffer, &ptr[beg], len - beg);
     }
 
     RB_GC_GUARD(str);
 }
 
-static void convert_UTF8_to_ASCII_only_JSON(FBuffer *out_buffer, VALUE str, const char escape_table[256], bool out_script_safe)
+static void convert_UTF8_to_ASCII_only_JSON(SBuffer *out_buffer, VALUE str, const char escape_table[256], bool out_script_safe)
 {
     const char *hexdig = "0123456789abcdef";
     char scratch[12] = { '\\', 'u', 0, 0, 0, 0, '\\', 'u' };
@@ -209,7 +318,7 @@ static void convert_UTF8_to_ASCII_only_JSON(FBuffer *out_buffer, VALUE str, cons
 
     unsigned long beg = 0, pos = 0;
 
-#define FLUSH_POS(bytes) if (pos > beg) { fbuffer_append(out_buffer, &ptr[beg], pos - beg); } pos += bytes; beg = pos;
+#define FLUSH_POS(bytes) if (pos > beg) { sbuffer_append(out_buffer, &ptr[beg], pos - beg); } pos += bytes; beg = pos;
 
     while (pos < len) {
         unsigned char ch = ptr[pos];
@@ -223,20 +332,20 @@ static void convert_UTF8_to_ASCII_only_JSON(FBuffer *out_buffer, VALUE str, cons
                 case 1: {
                     FLUSH_POS(1);
                     switch (ch) {
-                        case '"':  fbuffer_append(out_buffer, "\\\"", 2); break;
-                        case '\\': fbuffer_append(out_buffer, "\\\\", 2); break;
-                        case '/':  fbuffer_append(out_buffer, "\\/", 2); break;
-                        case '\b': fbuffer_append(out_buffer, "\\b", 2); break;
-                        case '\f': fbuffer_append(out_buffer, "\\f", 2); break;
-                        case '\n': fbuffer_append(out_buffer, "\\n", 2); break;
-                        case '\r': fbuffer_append(out_buffer, "\\r", 2); break;
-                        case '\t': fbuffer_append(out_buffer, "\\t", 2); break;
+                        case '"':  sbuffer_append(out_buffer, "\\\"", 2); break;
+                        case '\\': sbuffer_append(out_buffer, "\\\\", 2); break;
+                        case '/':  sbuffer_append(out_buffer, "\\/", 2); break;
+                        case '\b': sbuffer_append(out_buffer, "\\b", 2); break;
+                        case '\f': sbuffer_append(out_buffer, "\\f", 2); break;
+                        case '\n': sbuffer_append(out_buffer, "\\n", 2); break;
+                        case '\r': sbuffer_append(out_buffer, "\\r", 2); break;
+                        case '\t': sbuffer_append(out_buffer, "\\t", 2); break;
                         default: {
                             scratch[2] = hexdig[ch >> 12];
                             scratch[3] = hexdig[(ch >> 8) & 0xf];
                             scratch[4] = hexdig[(ch >> 4) & 0xf];
                             scratch[5] = hexdig[ch & 0xf];
-                            fbuffer_append(out_buffer, scratch, 6);
+                            sbuffer_append(out_buffer, scratch, 6);
                             break;
                         }
                     }
@@ -267,7 +376,7 @@ static void convert_UTF8_to_ASCII_only_JSON(FBuffer *out_buffer, VALUE str, cons
                         scratch[3] = hexdig[(wchar >> 8) & 0xf];
                         scratch[4] = hexdig[(wchar >> 4) & 0xf];
                         scratch[5] = hexdig[wchar & 0xf];
-                        fbuffer_append(out_buffer, scratch, 6);
+                        sbuffer_append(out_buffer, scratch, 6);
                     } else {
                         uint16_t hi, lo;
                         wchar -= 0x10000;
@@ -284,7 +393,7 @@ static void convert_UTF8_to_ASCII_only_JSON(FBuffer *out_buffer, VALUE str, cons
                         scratch[10] = hexdig[(lo >> 4) & 0xf];
                         scratch[11] = hexdig[lo & 0xf];
 
-                        fbuffer_append(out_buffer, scratch, 12);
+                        sbuffer_append(out_buffer, scratch, 12);
                     }
 
                     break;
@@ -297,7 +406,7 @@ static void convert_UTF8_to_ASCII_only_JSON(FBuffer *out_buffer, VALUE str, cons
 #undef FLUSH_POS
 
     if (beg < len) {
-        fbuffer_append(out_buffer, &ptr[beg], len - beg);
+        sbuffer_append(out_buffer, &ptr[beg], len - beg);
     }
 
     RB_GC_GUARD(str);
@@ -616,12 +725,12 @@ static VALUE cState_s_allocate(VALUE klass)
     JSON_Generator_State *state;
     VALUE obj = TypedData_Make_Struct(klass, JSON_Generator_State, &JSON_Generator_State_type, state);
     state->max_nesting = 100;
-    state->buffer_initial_length = FBUFFER_INITIAL_LENGTH_DEFAULT;
+    state->buffer_initial_length = SBUFFER_INITIAL_LENGTH_DEFAULT;
     return obj;
 }
 
 struct hash_foreach_arg {
-    FBuffer *buffer;
+    SBuffer *buffer;
     JSON_Generator_State *state;
     VALUE Vstate;
     int iter;
@@ -631,20 +740,20 @@ static int
 json_object_i(VALUE key, VALUE val, VALUE _arg)
 {
     struct hash_foreach_arg *arg = (struct hash_foreach_arg *)_arg;
-    FBuffer *buffer = arg->buffer;
+    SBuffer *buffer = arg->buffer;
     JSON_Generator_State *state = arg->state;
     VALUE Vstate = arg->Vstate;
 
     long depth = state->depth;
     int j;
 
-    if (arg->iter > 0) fbuffer_append_char(buffer, ',');
+    if (arg->iter > 0) sbuffer_append_char(buffer, ',');
     if (RB_UNLIKELY(state->object_nl)) {
-        fbuffer_append(buffer, state->object_nl, state->object_nl_len);
+        sbuffer_append(buffer, state->object_nl, state->object_nl_len);
     }
     if (RB_UNLIKELY(state->indent)) {
         for (j = 0; j < depth; j++) {
-            fbuffer_append(buffer, state->indent, state->indent_len);
+            sbuffer_append(buffer, state->indent, state->indent_len);
         }
     }
 
@@ -662,16 +771,16 @@ json_object_i(VALUE key, VALUE val, VALUE _arg)
     }
 
     generate_json_string(buffer, Vstate, state, key_to_s);
-    if (RB_UNLIKELY(state->space_before)) fbuffer_append(buffer, state->space_before, state->space_before_len);
-    fbuffer_append_char(buffer, ':');
-    if (RB_UNLIKELY(state->space)) fbuffer_append(buffer, state->space, state->space_len);
+    if (RB_UNLIKELY(state->space_before)) sbuffer_append(buffer, state->space_before, state->space_before_len);
+    sbuffer_append_char(buffer, ':');
+    if (RB_UNLIKELY(state->space)) sbuffer_append(buffer, state->space, state->space_len);
     generate_json(buffer, Vstate, state, val);
 
     arg->iter++;
     return ST_CONTINUE;
 }
 
-static void generate_json_object(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
+static void generate_json_object(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
 {
     long max_nesting = state->max_nesting;
     long depth = ++state->depth;
@@ -683,12 +792,12 @@ static void generate_json_object(FBuffer *buffer, VALUE Vstate, JSON_Generator_S
     }
 
     if (RHASH_SIZE(obj) == 0) {
-        fbuffer_append(buffer, "{}", 2);
+        sbuffer_append(buffer, "{}", 2);
         --state->depth;
         return;
     }
 
-    fbuffer_append_char(buffer, '{');
+    sbuffer_append_char(buffer, '{');
 
     arg.buffer = buffer;
     arg.state = state;
@@ -698,17 +807,17 @@ static void generate_json_object(FBuffer *buffer, VALUE Vstate, JSON_Generator_S
 
     depth = --state->depth;
     if (RB_UNLIKELY(state->object_nl)) {
-        fbuffer_append(buffer, state->object_nl, state->object_nl_len);
+        sbuffer_append(buffer, state->object_nl, state->object_nl_len);
         if (RB_UNLIKELY(state->indent)) {
             for (j = 0; j < depth; j++) {
-                fbuffer_append(buffer, state->indent, state->indent_len);
+                sbuffer_append(buffer, state->indent, state->indent_len);
             }
         }
     }
-    fbuffer_append_char(buffer, '}');
+    sbuffer_append_char(buffer, '}');
 }
 
-static void generate_json_array(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
+static void generate_json_array(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
 {
     long max_nesting = state->max_nesting;
     long depth = ++state->depth;
@@ -718,35 +827,35 @@ static void generate_json_array(FBuffer *buffer, VALUE Vstate, JSON_Generator_St
     }
 
     if (RARRAY_LEN(obj) == 0) {
-        fbuffer_append(buffer, "[]", 2);
+        sbuffer_append(buffer, "[]", 2);
         --state->depth;
         return;
     }
 
-    fbuffer_append_char(buffer, '[');
-    if (RB_UNLIKELY(state->array_nl)) fbuffer_append(buffer, state->array_nl, state->array_nl_len);
+    sbuffer_append_char(buffer, '[');
+    if (RB_UNLIKELY(state->array_nl)) sbuffer_append(buffer, state->array_nl, state->array_nl_len);
     for(i = 0; i < RARRAY_LEN(obj); i++) {
         if (i > 0) {
-            fbuffer_append_char(buffer, ',');
-            if (RB_UNLIKELY(state->array_nl)) fbuffer_append(buffer, state->array_nl, state->array_nl_len);
+            sbuffer_append_char(buffer, ',');
+            if (RB_UNLIKELY(state->array_nl)) sbuffer_append(buffer, state->array_nl, state->array_nl_len);
         }
         if (RB_UNLIKELY(state->indent)) {
             for (j = 0; j < depth; j++) {
-                fbuffer_append(buffer, state->indent, state->indent_len);
+                sbuffer_append(buffer, state->indent, state->indent_len);
             }
         }
         generate_json(buffer, Vstate, state, RARRAY_AREF(obj, i));
     }
     state->depth = --depth;
     if (RB_UNLIKELY(state->array_nl)) {
-        fbuffer_append(buffer, state->array_nl, state->array_nl_len);
+        sbuffer_append(buffer, state->array_nl, state->array_nl_len);
         if (RB_UNLIKELY(state->indent)) {
             for (j = 0; j < depth; j++) {
-                fbuffer_append(buffer, state->indent, state->indent_len);
+                sbuffer_append(buffer, state->indent, state->indent_len);
             }
         }
     }
-    fbuffer_append_char(buffer, ']');
+    sbuffer_append_char(buffer, ']');
 }
 
 static int usascii_encindex, utf8_encindex, binary_encindex;
@@ -781,11 +890,11 @@ static inline VALUE ensure_valid_encoding(VALUE str)
     return str;
 }
 
-static void generate_json_string(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
+static void generate_json_string(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
 {
     obj = ensure_valid_encoding(obj);
 
-    fbuffer_append_char(buffer, '"');
+    sbuffer_append_char(buffer, '"');
 
     switch(rb_enc_str_coderange(obj)) {
         case ENC_CODERANGE_7BIT:
@@ -802,37 +911,37 @@ static void generate_json_string(FBuffer *buffer, VALUE Vstate, JSON_Generator_S
             rb_raise(rb_path2class("JSON::GeneratorError"), "source sequence is illegal/malformed utf-8");
             break;
     }
-    fbuffer_append_char(buffer, '"');
+    sbuffer_append_char(buffer, '"');
 }
 
-static void generate_json_null(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
+static void generate_json_null(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
 {
-    fbuffer_append(buffer, "null", 4);
+    sbuffer_append(buffer, "null", 4);
 }
 
-static void generate_json_false(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
+static void generate_json_false(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
 {
-    fbuffer_append(buffer, "false", 5);
+    sbuffer_append(buffer, "false", 5);
 }
 
-static void generate_json_true(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
+static void generate_json_true(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
 {
-    fbuffer_append(buffer, "true", 4);
+    sbuffer_append(buffer, "true", 4);
 }
 
-static void generate_json_fixnum(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
+static void generate_json_fixnum(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
 {
-    fbuffer_append_long(buffer, FIX2LONG(obj));
+    sbuffer_append_long(buffer, FIX2LONG(obj));
 }
 
-static void generate_json_bignum(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
+static void generate_json_bignum(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
 {
     VALUE tmp = rb_funcall(obj, i_to_s, 0);
-    fbuffer_append_str(buffer, tmp);
+    sbuffer_append_str(buffer, tmp);
 }
 
 #ifdef RUBY_INTEGER_UNIFICATION
-static void generate_json_integer(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
+static void generate_json_integer(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
 {
     if (FIXNUM_P(obj))
         generate_json_fixnum(buffer, Vstate, state, obj);
@@ -840,7 +949,7 @@ static void generate_json_integer(FBuffer *buffer, VALUE Vstate, JSON_Generator_
         generate_json_bignum(buffer, Vstate, state, obj);
 }
 #endif
-static void generate_json_float(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
+static void generate_json_float(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
 {
     double value = RFLOAT_VALUE(obj);
     char allow_nan = state->allow_nan;
@@ -852,10 +961,10 @@ static void generate_json_float(FBuffer *buffer, VALUE Vstate, JSON_Generator_St
             rb_raise(eGeneratorError, "%"PRIsVALUE" not allowed in JSON", tmp);
         }
     }
-    fbuffer_append_str(buffer, tmp);
+    sbuffer_append_str(buffer, tmp);
 }
 
-static void generate_json(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
+static void generate_json(SBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj)
 {
     VALUE tmp;
     if (obj == Qnil) {
@@ -901,7 +1010,7 @@ static void generate_json(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *s
                 } else if (rb_respond_to(obj, i_to_json)) {
                     tmp = rb_funcall(obj, i_to_json, 1, Vstate);
                     Check_Type(tmp, T_STRING);
-                    fbuffer_append_str(buffer, tmp);
+                    sbuffer_append_str(buffer, tmp);
                 } else {
                     tmp = rb_funcall(obj, i_to_s, 0);
                     Check_Type(tmp, T_STRING);
@@ -911,55 +1020,19 @@ static void generate_json(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *s
     }
 }
 
-static FBuffer *cState_prepare_buffer(VALUE self)
-{
-    FBuffer *buffer;
-    GET_STATE(self);
-    buffer = fbuffer_alloc(state->buffer_initial_length);
-
-    return buffer;
-}
-
-struct generate_json_data {
-    FBuffer *buffer;
-    VALUE vstate;
-    JSON_Generator_State *state;
-    VALUE obj;
-};
-
-static VALUE generate_json_try(VALUE d)
-{
-    struct generate_json_data *data = (struct generate_json_data *)d;
-
-    generate_json(data->buffer, data->vstate, data->state, data->obj);
-
-    return Qnil;
-}
-
-static VALUE generate_json_rescue(VALUE d, VALUE exc)
-{
-    struct generate_json_data *data = (struct generate_json_data *)d;
-    fbuffer_free(data->buffer);
-
-    rb_exc_raise(exc);
-
-    return Qundef;
-}
-
 static VALUE cState_partial_generate(VALUE self, VALUE obj)
 {
-    FBuffer *buffer = cState_prepare_buffer(self);
     GET_STATE(self);
 
-    struct generate_json_data data = {
-        .buffer = buffer,
-        .vstate = self,
-        .state = state,
-        .obj = obj
+    VALUE string = rb_utf8_str_new(NULL, 0);
+    rb_str_resize(string, state->buffer_initial_length - 1);
+    SBuffer buffer = {
+        .capa = state->buffer_initial_length - 1,
+        .str = string,
+        .ptr = RSTRING_PTR(string),
     };
-    rb_rescue(generate_json_try, (VALUE)&data, generate_json_rescue, (VALUE)&data);
-
-    return fbuffer_to_s(buffer);
+    generate_json(&buffer, self, state, obj);
+    return sbuffer_to_s(&buffer);
 }
 
 /*

@@ -5,6 +5,7 @@
 #include <ctype.h>
 
 #include "ruby.h"
+#include "ruby/encoding.h"
 
 /* This is the fallback definition from Ruby 3.4 */
 #ifndef RBIMPL_STDBOOL_H
@@ -47,25 +48,6 @@ typedef struct JSON_Generator_StateStruct {
     long buffer_initial_length;
 } JSON_Generator_State;
 
-#define GET_STATE_TO(self, state) \
-    TypedData_Get_Struct(self, JSON_Generator_State, &JSON_Generator_State_type, state)
-
-#define GET_STATE(self)                       \
-    JSON_Generator_State *state;              \
-    GET_STATE_TO(self, state)
-
-#define GENERATE_JSON(type)                                                                     \
-    FBuffer *buffer;                                                                            \
-    VALUE Vstate;                                                                               \
-    JSON_Generator_State *state;                                                                \
-                                                                                                \
-    rb_scan_args(argc, argv, "01", &Vstate);                                                    \
-    Vstate = cState_from_state_s(cState, Vstate);                                               \
-    TypedData_Get_Struct(Vstate, JSON_Generator_State, &JSON_Generator_State_type, state);      \
-    buffer = cState_prepare_buffer(Vstate);                                                     \
-    generate_json_##type(buffer, Vstate, state, self);                                          \
-    return fbuffer_to_s(buffer)
-
 static VALUE mHash_to_json(int argc, VALUE *argv, VALUE self);
 static VALUE mArray_to_json(int argc, VALUE *argv, VALUE self);
 #ifdef RUBY_INTEGER_UNIFICATION
@@ -86,19 +68,6 @@ static VALUE mNilClass_to_json(int argc, VALUE *argv, VALUE self);
 static VALUE mObject_to_json(int argc, VALUE *argv, VALUE self);
 static void State_free(void *state);
 static VALUE cState_s_allocate(VALUE klass);
-static void generate_json(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
-static void generate_json_object(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
-static void generate_json_array(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
-static void generate_json_string(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
-static void generate_json_null(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
-static void generate_json_false(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
-static void generate_json_true(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
-#ifdef RUBY_INTEGER_UNIFICATION
-static void generate_json_integer(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
-#endif
-static void generate_json_fixnum(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
-static void generate_json_bignum(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
-static void generate_json_float(FBuffer *buffer, VALUE Vstate, JSON_Generator_State *state, VALUE obj);
 static VALUE cState_partial_generate(VALUE self, VALUE obj);
 static VALUE cState_generate(VALUE self, VALUE obj);
 static VALUE cState_from_state_s(VALUE self, VALUE opts);
@@ -122,7 +91,6 @@ static VALUE cState_script_safe(VALUE self);
 static VALUE cState_script_safe_set(VALUE self, VALUE depth);
 static VALUE cState_strict(VALUE self);
 static VALUE cState_strict_set(VALUE self, VALUE strict);
-static FBuffer *cState_prepare_buffer(VALUE self);
 
 static const rb_data_type_t JSON_Generator_State_type;
 
