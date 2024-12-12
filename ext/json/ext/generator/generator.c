@@ -1079,11 +1079,10 @@ static VALUE cState_partial_generate(VALUE self, VALUE obj, generator_func func,
 {
     GET_STATE(self);
 
-    char stack_buffer[FBUFFER_STACK_SIZE];
     FBuffer buffer = {
         .io = RTEST(io) ? io : Qfalse,
     };
-    fbuffer_stack_init(&buffer, state->buffer_initial_length, stack_buffer, FBUFFER_STACK_SIZE);
+    fbuffer_init(&buffer, state->buffer_initial_length);
 
     struct generate_json_data data = {
         .buffer = &buffer,
@@ -1533,11 +1532,10 @@ static VALUE cState_m_generate(VALUE klass, VALUE obj, VALUE opts, VALUE io)
     state_init(&state);
     configure_state(&state, opts);
 
-    char stack_buffer[FBUFFER_STACK_SIZE];
     FBuffer buffer = {
         .io = RTEST(io) ? io : Qfalse,
     };
-    fbuffer_stack_init(&buffer, state.buffer_initial_length, stack_buffer, FBUFFER_STACK_SIZE);
+    fbuffer_init(&buffer, state.buffer_initial_length);
 
     struct generate_json_data data = {
         .buffer = &buffer,

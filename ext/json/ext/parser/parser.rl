@@ -712,7 +712,6 @@ static char *JSON_decode_integer(JSON_Parser *json, char *p, VALUE *result)
         } else {
             fbuffer_clear(&json->fbuffer);
             fbuffer_append(&json->fbuffer, json->memo, len);
-            fbuffer_append_char(&json->fbuffer, '\0');
             *result = rb_cstr2inum(FBUFFER_PTR(&json->fbuffer), 10);
         }
         return p + 1;
@@ -1262,8 +1261,7 @@ static VALUE cParser_parse(VALUE self)
     VALUE result = Qnil;
     GET_PARSER;
 
-    char stack_buffer[FBUFFER_STACK_SIZE];
-    fbuffer_stack_init(&json->fbuffer, FBUFFER_INITIAL_LENGTH_DEFAULT, stack_buffer, FBUFFER_STACK_SIZE);
+    fbuffer_init(&json->fbuffer, FBUFFER_INITIAL_LENGTH_DEFAULT);
 
     VALUE rvalue_stack_buffer[RVALUE_STACK_INITIAL_CAPA];
     rvalue_stack stack = {
@@ -1300,8 +1298,7 @@ static VALUE cParser_m_parse(VALUE klass, VALUE source, VALUE opts)
     JSON_Parser *json = &_parser;
     parser_init(json, source, opts);
 
-    char stack_buffer[FBUFFER_STACK_SIZE];
-    fbuffer_stack_init(&json->fbuffer, FBUFFER_INITIAL_LENGTH_DEFAULT, stack_buffer, FBUFFER_STACK_SIZE);
+    fbuffer_init(&json->fbuffer, FBUFFER_INITIAL_LENGTH_DEFAULT);
 
     VALUE rvalue_stack_buffer[RVALUE_STACK_INITIAL_CAPA];
     rvalue_stack stack = {
@@ -1355,7 +1352,7 @@ static void JSON_free(void *ptr)
 static size_t JSON_memsize(const void *ptr)
 {
     const JSON_Parser *json = ptr;
-    return sizeof(*json) + FBUFFER_CAPA(&json->fbuffer);
+    return sizeof(*json);
 }
 
 static const rb_data_type_t JSON_Parser_type = {
@@ -1369,7 +1366,7 @@ static VALUE cJSON_parser_s_allocate(VALUE klass)
 {
     JSON_Parser *json;
     VALUE obj = TypedData_Make_Struct(klass, JSON_Parser, &JSON_Parser_type, json);
-    fbuffer_stack_init(&json->fbuffer, 0, NULL, 0);
+    fbuffer_init(&json->fbuffer, 0);
     return obj;
 }
 
