@@ -17,8 +17,8 @@ end
 def implementations(ruby_obj)
   state = JSON::State.new(JSON.dump_default_options)
   {
-    json: ["json", proc { JSON.generate(ruby_obj) }],
-    oj: ["oj", proc { Oj.dump(ruby_obj) }],
+    json: ["json-#{JSON::VERSION}", proc { JSON.generate(ruby_obj) }],
+    # oj: ["oj", proc { Oj.dump(ruby_obj) }],
   }
 end
 
@@ -49,6 +49,7 @@ def benchmark_encoding(benchmark_name, ruby_obj, check_expected: true, except: [
       end
       x.report(name, &block)
     end
+    x.save! "/tmp/json-bench-#{benchmark_name}"
     x.compare!(order: :baseline)
   end
   puts
