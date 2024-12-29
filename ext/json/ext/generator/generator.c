@@ -1024,8 +1024,8 @@ static VALUE cState_partial_generate(VALUE self, VALUE obj)
 {
     GET_STATE(self);
 
-    VALUE string = rb_utf8_str_new(NULL, 0);
-    rb_str_resize(string, state->buffer_initial_length - 1);
+    VALUE string = rb_str_buf_new(state->buffer_initial_length - 1);
+    rb_enc_associate_index(string, utf8_encindex);
     SBuffer buffer = {
         .capa = state->buffer_initial_length - 1,
         .str = string,
