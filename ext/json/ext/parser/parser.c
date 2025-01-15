@@ -785,6 +785,10 @@ json_parse_any(JSON_ParserState *state) {
                 state->cursor++;
             }
 
+            if (*start == '0' && state->cursor > start) {
+                raise_parse_error("invalid number: %s", start);
+            }
+
             if ((state->cursor < state->end) && (*state->cursor == '.')) {
                 integer = false;
                 state->cursor++;
