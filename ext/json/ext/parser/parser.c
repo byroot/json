@@ -712,6 +712,46 @@ json_decode_float(JSON_ParserState *state, const char *start, const char *end)
     }
 }
 
+static inline VALUE
+json_decode_object(JSON_ParserState *state, long count)
+{
+    VALUE object;
+    if (RB_UNLIKELY(state->json->object_class)) {
+        object = rb_class_new_instance(0, 0, state->json->object_class);
+        long index = 0;
+        VALUE *items = rvalue_stack_peek(state->stack, count);
+        while (index < count) {
+            VALUE name = items[index++];
+            VALUE value = items[index++];
+            rb_funcall(object, i_aset, 2, name, value);
+        }
+    } else {
+        object = rb_hash_new_capa(count);
+        rb_hash_bulk_insert(count, rvalue_stack_peek(state->stack, count), object);
+        rvalue_stack_pop(state->stack, count);
+    }
+
+    if (RB_UNLIKELY(state->json->create_additions)) {
+        VALUE klassname;
+        if (state->json->object_class) {
+            klassname = rb_funcall(object, i_aref, 1, state->json->create_id);
+        } else {
+            klassname = rb_hash_aref(object, state->json->create_id);
+        }
+        if (!NIL_P(klassname)) {
+            VALUE klass = rb_funcall(mJSON, i_deep_const_get, 1, klassname);
+            if (RTEST(rb_funcall(klass, i_json_creatable_p, 0))) {
+                if (state->json->deprecated_create_additions) {
+                    json_deprecated(deprecated_create_additions_warning);
+                }
+                object = rb_funcall(klass, i_json_create, 1, object);
+            }
+        }
+    }
+
+    return object;
+}
+
 #define PUSH(result) rvalue_stack_push(state->stack, result, &state->stack_handle, &state->stack)
 
 static inline VALUE
@@ -918,7 +958,7 @@ json_parse_any(JSON_ParserState *state)
                 }
                 state->cursor++;
 
-                VALUE value = json_parse_any(state);
+                json_parse_any(state);
 
                 json_eat_whitespace(state);
                 switch (*state->cursor) {
@@ -928,10 +968,7 @@ json_parse_any(JSON_ParserState *state)
                     case '}': {
                         state->cursor++;
                         long count = state->stack->head - stack_head;
-                        VALUE hash = rb_hash_new_capa(count);
-                        rb_hash_bulk_insert(count, rvalue_stack_peek(state->stack, count), hash);
-                        rvalue_stack_pop(state->stack, count);
-                        return PUSH(hash);
+                        return PUSH(json_decode_object(state, count));
                     }
                     default:
                         raise_parse_error("expected ',' or '}' after object value", state->cursor);
