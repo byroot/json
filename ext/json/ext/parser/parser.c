@@ -714,6 +714,35 @@ json_decode_float(JSON_ParserState *state, const char *start, const char *end)
 
 #define PUSH(result) rvalue_stack_push(state->stack, result, &state->stack_handle, &state->stack)
 
+static inline VALUE
+json_parse_string(JSON_ParserState *state) {
+    state->cursor++;
+    const char *start = state->cursor;
+    bool escaped = false;
+
+    while (state->cursor < state->end) {
+        if (*state->cursor == '"') {
+            // TODO: bool is_name, bool intern, bool symbolize
+            VALUE string;
+            if (escaped) {
+                string = json_string_unescape(state, start, state->cursor, false, false, false);
+            } else {
+                string = json_string_fastpath(state, start, state->cursor, false, false, false);
+            }
+            state->cursor++;
+            return PUSH(string);
+        } else if (*state->cursor == '\\') {
+            state->cursor++;
+            escaped = true;
+        }
+
+        state->cursor++;
+    }
+
+    raise_parse_error("unexpected end of input, expected closing \"", state->cursor);
+    return Qfalse;
+}
+
 static VALUE
 json_parse_any(JSON_ParserState *state) {
     json_eat_whitespace(state);
@@ -782,30 +811,7 @@ json_parse_any(JSON_ParserState *state) {
         }
         case '"': {
             // %r{\A"[^"\\\t\n\x00]*(?:\\[bfnrtu\\/"][^"\\]*)*"}
-            state->cursor++;
-            const char *start = state->cursor;
-            bool escaped = false;
-
-            while (state->cursor < state->end) {
-                if (*state->cursor == '"') {
-                    // TODO: bool is_name, bool intern, bool symbolize
-                    VALUE string;
-                    if (escaped) {
-                        string = json_string_unescape(state, start, state->cursor, false, false, false);
-                    } else {
-                        string = json_string_fastpath(state, start, state->cursor, false, false, false);
-                    }
-                    state->cursor++;
-                    return PUSH(string);
-                } else if (*state->cursor == '\\') {
-                    state->cursor++;
-                    escaped = true;
-                }
-
-                state->cursor++;
-            }
-
-            raise_parse_error("unexpected end of input, expected closing \"", state->cursor);
+            return json_parse_string(state);
             break;
         }
         case '[': {
@@ -853,11 +859,12 @@ json_parse_any(JSON_ParserState *state) {
 
             while (state->cursor < state->end) {
                 json_eat_whitespace(state);
+
                 if (*state->cursor != '"') {
                     raise_parse_error("expected object key", state->cursor);
                 }
+                json_parse_string(state);
 
-                VALUE key = json_parse_any(state);
                 json_eat_whitespace(state);
 
                 if ((state->cursor >= state->end) || (*state->cursor != ':')) {
