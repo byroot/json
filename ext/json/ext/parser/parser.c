@@ -461,7 +461,172 @@ json_eat_whitespace(JSON_ParserState *state) {
     }
 }
 
+static inline VALUE build_string(const char *start, const char *end, bool intern, bool symbolize)
+{
+    if (symbolize) {
+        intern = true;
+    }
+    VALUE result;
+# ifdef HAVE_RB_ENC_INTERNED_STR
+    if (intern) {
+      result = rb_enc_interned_str(start, (long)(end - start), enc_utf8);
+    } else {
+      result = rb_utf8_str_new(start, (long)(end - start));
+    }
+# else
+    result = rb_utf8_str_new(start, (long)(end - start));
+    if (intern) {
+        result = rb_funcall(rb_str_freeze(result), i_uminus, 0);
+    }
+# endif
 
+    if (symbolize) {
+      result = rb_str_intern(result);
+    }
+
+    return result;
+}
+
+static VALUE json_string_fastpath(JSON_ParserState *state, char *string, char *stringEnd, bool is_name, bool intern, bool symbolize)
+{
+    size_t bufferSize = stringEnd - string;
+
+    if (is_name && state->in_array) {
+        VALUE cached_key;
+        if (RB_UNLIKELY(symbolize)) {
+            cached_key = rsymbol_cache_fetch(&state->name_cache, string, bufferSize);
+        } else {
+            cached_key = rstring_cache_fetch(&state->name_cache, string, bufferSize);
+        }
+
+        if (RB_LIKELY(cached_key)) {
+            return cached_key;
+        }
+    }
+
+    return build_string(string, stringEnd, intern, symbolize);
+}
+
+static VALUE json_string_unescape(JSON_ParserState *state, char *string, char *stringEnd, bool is_name, bool intern, bool symbolize)
+{
+    size_t bufferSize = stringEnd - string;
+    char *p = string, *pe = string, *unescape, *bufferStart, *buffer;
+    int unescape_len;
+    char buf[4];
+
+    if (is_name && state->in_array) {
+        VALUE cached_key;
+        if (RB_UNLIKELY(symbolize)) {
+            cached_key = rsymbol_cache_fetch(&state->name_cache, string, bufferSize);
+        } else {
+            cached_key = rstring_cache_fetch(&state->name_cache, string, bufferSize);
+        }
+
+        if (RB_LIKELY(cached_key)) {
+            return cached_key;
+        }
+    }
+
+    pe = memchr(p, '\\', bufferSize);
+    if (RB_UNLIKELY(pe == NULL)) {
+        return build_string(string, stringEnd, intern, symbolize);
+    }
+
+    VALUE result = rb_str_buf_new(bufferSize);
+    rb_enc_associate_index(result, utf8_encindex);
+    buffer = bufferStart = RSTRING_PTR(result);
+
+    while (pe < stringEnd) {
+        if (*pe == '\\') {
+            unescape = (char *) "?";
+            unescape_len = 1;
+            if (pe > p) {
+              MEMCPY(buffer, p, char, pe - p);
+              buffer += pe - p;
+            }
+            switch (*++pe) {
+                case 'n':
+                    unescape = (char *) "\n";
+                    break;
+                case 'r':
+                    unescape = (char *) "\r";
+                    break;
+                case 't':
+                    unescape = (char *) "\t";
+                    break;
+                case '"':
+                    unescape = (char *) "\"";
+                    break;
+                case '\\':
+                    unescape = (char *) "\\";
+                    break;
+                case 'b':
+                    unescape = (char *) "\b";
+                    break;
+                case 'f':
+                    unescape = (char *) "\f";
+                    break;
+                case 'u':
+                    if (pe > stringEnd - 4) {
+                      raise_parse_error("incomplete unicode character escape sequence at '%s'", p);
+                    } else {
+                        uint32_t ch = unescape_unicode((unsigned char *) ++pe);
+                        pe += 3;
+                        /* To handle values above U+FFFF, we take a sequence of
+                         * \uXXXX escapes in the U+D800..U+DBFF then
+                         * U+DC00..U+DFFF ranges, take the low 10 bits from each
+                         * to make a 20-bit number, then add 0x10000 to get the
+                         * final codepoint.
+                         *
+                         * See Unicode 15: 3.8 "Surrogates", 5.3 "Handling
+                         * Surrogate Pairs in UTF-16", and 23.6 "Surrogates
+                         * Area".
+                         */
+                        if ((ch & 0xFC00) == 0xD800) {
+                            pe++;
+                            if (pe > stringEnd - 6) {
+                              raise_parse_error("incomplete surrogate pair at '%s'", p);
+                            }
+                            if (pe[0] == '\\' && pe[1] == 'u') {
+                                uint32_t sur = unescape_unicode((unsigned char *) pe + 2);
+                                ch = (((ch & 0x3F) << 10) | ((((ch >> 6) & 0xF) + 1) << 16)
+                                        | (sur & 0x3FF));
+                                pe += 5;
+                            } else {
+                                unescape = (char *) "?";
+                                break;
+                            }
+                        }
+                        unescape_len = convert_UTF32_to_UTF8(buf, ch);
+                        unescape = buf;
+                    }
+                    break;
+                default:
+                    p = pe;
+                    continue;
+            }
+            MEMCPY(buffer, unescape, char, unescape_len);
+            buffer += unescape_len;
+            p = ++pe;
+        } else {
+            pe++;
+        }
+    }
+
+    if (pe > p) {
+      MEMCPY(buffer, p, char, pe - p);
+      buffer += pe - p;
+    }
+    rb_str_set_len(result, buffer - bufferStart);
+
+    if (symbolize) {
+        result = rb_str_intern(result);
+    } else if (intern) {
+        result = rb_funcall(rb_str_freeze(result), i_uminus, 0);
+    }
+
+    return result;
+}
 
 #define MAX_FAST_INTEGER_SIZE 18
 static inline VALUE fast_decode_integer(const char *p, const char *pe)
@@ -619,15 +784,22 @@ json_parse_any(JSON_ParserState *state) {
             // %r{\A"[^"\\\t\n\x00]*(?:\\[bfnrtu\\/"][^"\\]*)*"}
             state->cursor++;
             const char *start = state->cursor;
+            bool escaped = false;
 
             while (state->cursor < state->end) {
                 if (*state->cursor == '"') {
-                    VALUE string = rb_enc_str_new((const char *) start, state->cursor - start, rb_utf8_encoding());
+                    // TODO: bool is_name, bool intern, bool symbolize
+                    VALUE string;
+                    if (escaped) {
+                        string = json_string_unescape(state, start, state->cursor, false, false, false);
+                    } else {
+                        string = json_string_fastpath(state, start, state->cursor, false, false, false);
+                    }
                     state->cursor++;
                     return PUSH(string);
                 } else if (*state->cursor == '\\') {
-                    // Parse escape sequence
                     state->cursor++;
+                    escaped = true;
                 }
 
                 state->cursor++;
