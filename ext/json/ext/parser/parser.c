@@ -758,7 +758,7 @@ json_parse_any(JSON_ParserState *state) {
                 return PUSH(Qnil);
             }
 
-            raise_parse_error("unexpected character", state->cursor);
+            raise_parse_error("unexpected character: %s", state->cursor);
             break;
         case 't':
             if ((state->end - state->cursor >= 4) && (memcmp(state->cursor, "true", 4) == 0)) {
@@ -766,7 +766,7 @@ json_parse_any(JSON_ParserState *state) {
                 return PUSH(Qtrue);
             }
 
-            raise_parse_error("unexpected character", state->cursor);
+            raise_parse_error("unexpected character: %s", state->cursor);
             break;
         case 'f':
             if ((state->end - state->cursor >= 5) && (memcmp(state->cursor, "false", 5) == 0)) {
@@ -776,16 +776,22 @@ json_parse_any(JSON_ParserState *state) {
 
             raise_parse_error("unexpected character", state->cursor);
             break;
-        case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
+        case '-': case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
             bool integer = true;
 
             // /\A-?(0|[1-9]\d*)(\.\d+)?([Ee][-+]?\d+)?/
             const char *start = state->cursor;
+            state->cursor++;
+
             while ((state->cursor < state->end) && (*state->cursor >= '0') && (*state->cursor <= '9')) {
                 state->cursor++;
             }
 
-            if (*start == '0' && state->cursor > start) {
+            long integer_length = state->cursor - start;
+
+            if (RB_UNLIKELY(start[0] == '0' && integer_length > 1)) {
+                raise_parse_error("invalid number: %s", start);
+            } else if (RB_UNLIKELY(integer_length > 2 && start[0] == '-' && start[1] == '0')) {
                 raise_parse_error("invalid number: %s", start);
             }
 
@@ -901,11 +907,11 @@ json_parse_any(JSON_ParserState *state) {
             break;
         }
         default:
-            raise_parse_error("unexpected character", state->cursor);
+            raise_parse_error("unexpected character: %s", state->cursor);
             break;
     }
 
-    raise_parse_error("unexpected character", state->cursor);
+    raise_parse_error("unexpected character: %s", state->cursor);
 }
 
 /*
