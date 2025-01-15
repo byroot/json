@@ -816,6 +816,44 @@ json_decode_object(JSON_ParserState *state, long count)
     return object;
 }
 
+static int
+match_i(VALUE regexp, VALUE klass, VALUE memo)
+{
+    if (regexp == Qundef) return ST_STOP;
+    if (RTEST(rb_funcall(klass, i_json_creatable_p, 0)) &&
+      RTEST(rb_funcall(regexp, i_match, 1, rb_ary_entry(memo, 0)))) {
+        rb_ary_push(memo, klass);
+        return ST_STOP;
+    }
+    return ST_CONTINUE;
+}
+
+static inline VALUE
+json_decode_string(JSON_ParserState *state, const char *start, const char *end, bool escaped, bool is_name)
+{
+    VALUE string;
+    bool intern = is_name || state->json->freeze;
+    bool symbolize = is_name && state->json->symbolize_names;
+    if (escaped) {
+        string = json_string_unescape(state, start, end, is_name, intern, symbolize);
+    } else {
+        string = json_string_fastpath(state, start, end, is_name, intern, symbolize);
+    }
+
+    if (RB_UNLIKELY(state->json->create_additions && RTEST(state->json->match_string))) {
+          VALUE klass;
+          VALUE memo = rb_ary_new2(2);
+          rb_ary_push(memo, string);
+          rb_hash_foreach(state->json->match_string, match_i, memo);
+          klass = rb_ary_entry(memo, 1);
+          if (RTEST(klass)) {
+              string = rb_funcall(klass, i_json_create, 1, string);
+          }
+    }
+
+    return string;
+}
+
 #define PUSH(result) rvalue_stack_push(state->stack, result, &state->stack_handle, &state->stack)
 
 static inline VALUE
@@ -826,14 +864,7 @@ json_parse_string(JSON_ParserState *state, bool is_name) {
 
     while (state->cursor < state->end) {
         if (*state->cursor == '"') {
-            VALUE string;
-            bool intern = is_name || state->json->freeze;
-            bool symbolize = is_name && state->json->symbolize_names;
-            if (escaped) {
-                string = json_string_unescape(state, start, state->cursor, is_name, intern, symbolize);
-            } else {
-                string = json_string_fastpath(state, start, state->cursor, is_name, intern, symbolize);
-            }
+            VALUE string = json_decode_string(state, start, state->cursor, escaped, is_name);
             state->cursor++;
             return PUSH(string);
         } else if (*state->cursor == '\\') {
