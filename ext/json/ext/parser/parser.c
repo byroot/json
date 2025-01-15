@@ -872,6 +872,10 @@ json_parse_string(JSON_ParserState *state, bool is_name) {
             escaped = true;
         }
 
+        if ((unsigned char)*state->cursor < 0x20) {
+            raise_parse_error("invalid ASCII control character in string: %s", state->cursor);
+        }
+
         state->cursor++;
     }
 
