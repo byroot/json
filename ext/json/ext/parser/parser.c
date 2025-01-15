@@ -932,6 +932,7 @@ json_parse_any(JSON_ParserState *state)
                 }
                 return PUSH(array);
             } else {
+                state->in_array++;
                 json_parse_any(state);
             }
 
@@ -942,6 +943,7 @@ json_parse_any(JSON_ParserState *state)
                     if (*state->cursor == ']') {
                         state->cursor++;
                         long count = state->stack->head - stack_head;
+                        state->in_array--;
                         return PUSH(json_decode_array(state, count));
                     }
 
