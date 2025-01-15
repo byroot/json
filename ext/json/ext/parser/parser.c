@@ -407,6 +407,7 @@ typedef struct JSON_ParserStateStruct {
     rvalue_stack *stack;
     rvalue_cache name_cache;
     int in_array;
+    int current_nesting;
 } JSON_ParserState;
 
 #define GET_PARSER                          \
@@ -932,6 +933,10 @@ json_parse_any(JSON_ParserState *state)
                 }
                 return PUSH(array);
             } else {
+                state->current_nesting++;
+                if (RB_UNLIKELY(state->json->max_nesting && (state->json->max_nesting < state->current_nesting))) {
+                    rb_raise(eNestingError, "nesting of %d is too deep", state->current_nesting);
+                }
                 state->in_array++;
                 json_parse_any(state);
             }
@@ -943,6 +948,7 @@ json_parse_any(JSON_ParserState *state)
                     if (*state->cursor == ']') {
                         state->cursor++;
                         long count = state->stack->head - stack_head;
+                        state->current_nesting--;
                         state->in_array--;
                         return PUSH(json_decode_array(state, count));
                     }
@@ -977,6 +983,11 @@ json_parse_any(JSON_ParserState *state)
                 }
                 return PUSH(hash);
             } else {
+                state->current_nesting++;
+                if (RB_UNLIKELY(state->json->max_nesting && (state->json->max_nesting < state->current_nesting))) {
+                    rb_raise(eNestingError, "nesting of %d is too deep", state->current_nesting);
+                }
+
                 if (*state->cursor != '"') {
                     raise_parse_error("expected object key, got '%s", state->cursor);
                 }
@@ -997,6 +1008,7 @@ json_parse_any(JSON_ParserState *state)
                 if (state->cursor < state->end) {
                     if (*state->cursor == '}') {
                         state->cursor++;
+                        state->current_nesting--;
                         long count = state->stack->head - stack_head;
                         return PUSH(json_decode_object(state, count));
                     }
