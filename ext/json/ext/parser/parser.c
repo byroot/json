@@ -538,7 +538,7 @@ json_parse_any(JSON_ParserState *state) {
                 state->cursor++;
             }
 
-            raise_parse_error("unexpected end of input", state->cursor);
+            raise_parse_error("unexpected end of input, expected closing \"", state->cursor);
             break;
         }
         case '[': {
@@ -567,7 +567,7 @@ json_parse_any(JSON_ParserState *state) {
                 }
             }
 
-            raise_parse_error("unexpected end of input", state->cursor);
+            raise_parse_error("unexpected end of input, expected closing ]", state->cursor);
             break;
         }
         case '{': {
@@ -614,7 +614,7 @@ json_parse_any(JSON_ParserState *state) {
                 }
             }
 
-            raise_parse_error("unexpected end of input", state->cursor);
+            raise_parse_error("unexpected end of input, expected closing }", state->cursor);
             break;
         }
         default:
@@ -765,8 +765,11 @@ static VALUE cParser_parse(JSON_Parser *json, VALUE Vsource)
 
     JSON_ParserState _state = {
         .json = json,
+        // TODO: get rid of redundant fields
         .len = RSTRING_LEN(Vsource),
         .source = RSTRING_PTR(Vsource),
+        .cursor = RSTRING_PTR(Vsource),
+        .end = RSTRING_PTR(Vsource) + RSTRING_LEN(Vsource),
         .Vsource = Vsource,
         .stack = &stack,
     };
