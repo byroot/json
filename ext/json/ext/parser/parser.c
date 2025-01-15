@@ -926,7 +926,11 @@ json_parse_any(JSON_ParserState *state)
 
             if ((state->cursor < state->end) && (*state->cursor == ']')) {
                 state->cursor++;
-                return PUSH(rb_ary_new());
+                VALUE array = rb_ary_new();
+                if (state->json->freeze) {
+                    RB_OBJ_FREEZE(array);
+                }
+                return PUSH(array);
             } else {
                 json_parse_any(state);
             }
@@ -965,7 +969,11 @@ json_parse_any(JSON_ParserState *state)
 
             if ((state->cursor < state->end) && (*state->cursor == '}')) {
                 state->cursor++;
-                return PUSH(rb_hash_new());
+                VALUE hash = rb_hash_new();
+                if (state->json->freeze) {
+                    RB_OBJ_FREEZE(hash);
+                }
+                return PUSH(hash);
             } else {
                 if (*state->cursor != '"') {
                     raise_parse_error("expected object key, got '%s", state->cursor);
