@@ -961,55 +961,73 @@ json_parse_any(JSON_ParserState *state)
         case '{': {
             state->cursor++;
             json_eat_whitespace(state);
+            long stack_head = state->stack->head;
 
             if ((state->cursor < state->end) && (*state->cursor == '}')) {
                 state->cursor++;
                 return PUSH(rb_hash_new());
-            }
-
-            long stack_head = state->stack->head;
-
-            while (state->cursor < state->end) {
-                json_eat_whitespace(state);
-
+            } else {
                 if (*state->cursor != '"') {
-                    raise_parse_error("expected object key", state->cursor);
+                    raise_parse_error("expected object key, got '%s", state->cursor);
                 }
                 json_parse_string(state, true);
 
                 json_eat_whitespace(state);
-
                 if ((state->cursor >= state->end) || (*state->cursor != ':')) {
                     raise_parse_error("expected ':' after object key", state->cursor);
                 }
                 state->cursor++;
 
                 json_parse_any(state);
+            }
 
+            while (true) {
                 json_eat_whitespace(state);
-                switch (*state->cursor) {
-                    case ',':
-                        state->cursor++;
-                        break;
-                    case '}': {
+
+                if (state->cursor < state->end) {
+                    if (*state->cursor == '}') {
                         state->cursor++;
                         long count = state->stack->head - stack_head;
                         return PUSH(json_decode_object(state, count));
                     }
-                    default:
-                        raise_parse_error("expected ',' or '}' after object value", state->cursor);
-                }
-            }
 
-            raise_parse_error("unexpected end of input, expected closing }", state->cursor);
+                    if (*state->cursor == ',') {
+                        state->cursor++;
+                        json_eat_whitespace(state);
+
+                        if (state->json->allow_trailing_comma) {
+                            if ((state->cursor < state->end) && (*state->cursor == '}')) {
+                                continue;
+                            }
+                        }
+
+                        if (*state->cursor != '"') {
+                            raise_parse_error("expected object key, got: '%s'", state->cursor);
+                        }
+                        json_parse_string(state, true);
+
+                        json_eat_whitespace(state);
+                        if ((state->cursor >= state->end) || (*state->cursor != ':')) {
+                            raise_parse_error("expected ':' after object key", state->cursor);
+                        }
+                        state->cursor++;
+
+                        json_parse_any(state);
+
+                        continue;
+                    }
+                }
+
+                raise_parse_error("expected ',' or '}' after object value", state->cursor);
+            }
             break;
         }
         default:
-            raise_parse_error("unexpected character: %s", state->cursor);
+            raise_parse_error("unexpected character: '%s'", state->cursor);
             break;
     }
 
-    raise_parse_error("unexpected character: %s", state->cursor);
+    raise_parse_error("unreacheable: '%s'", state->cursor);
 }
 
 static void
@@ -1017,7 +1035,7 @@ json_ensure_eof(JSON_ParserState *state)
 {
     json_eat_whitespace(state);
     if (state->cursor != state->end) {
-        raise_parse_error("unexpected token at end of stream %s", state->cursor);
+        raise_parse_error("unexpected token at end of stream '%s'", state->cursor);
     }
 }
 
