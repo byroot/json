@@ -398,8 +398,8 @@ typedef struct JSON_ParserStateStruct {
     VALUE Vsource;
     VALUE stack_handle;
     char *source;
-    const uint8_t *cursor;
-    const uint8_t *end;
+    const char *cursor;
+    const char *end;
     long len;
     char *memo;
     FBuffer fbuffer;
@@ -430,7 +430,7 @@ static void raise_parse_error(const char *format, const char *start)
 {
     char buffer[PARSE_ERROR_FRAGMENT_LEN + 1];
 
-    size_t len = strnlen(start, PARSE_ERROR_FRAGMENT_LEN);
+    size_t len = start ? strnlen(start, PARSE_ERROR_FRAGMENT_LEN) : 0;
     const char *ptr = start;
 
     if (len == PARSE_ERROR_FRAGMENT_LEN) {
@@ -494,7 +494,7 @@ json_parse_any(JSON_ParserState *state) {
             break;
         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
             // /\A-?(0|[1-9]\d*)(\.\d+)?([Ee][-+]?\d+)?/
-            const uint8_t *start = state->cursor;
+            const char *start = state->cursor;
             while ((state->cursor < state->end) && (*state->cursor >= '0') && (*state->cursor <= '9')) {
                 state->cursor++;
             }
@@ -523,7 +523,7 @@ json_parse_any(JSON_ParserState *state) {
         case '"': {
             // %r{\A"[^"\\\t\n\x00]*(?:\\[bfnrtu\\/"][^"\\]*)*"}
             state->cursor++;
-            const uint8_t *start = state->cursor;
+            const char *start = state->cursor;
 
             while (state->cursor < state->end) {
                 if (*state->cursor == '"') {
