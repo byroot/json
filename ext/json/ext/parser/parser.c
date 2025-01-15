@@ -921,32 +921,41 @@ json_parse_any(JSON_ParserState *state)
         }
         case '[': {
             state->cursor++;
+            json_eat_whitespace(state);
             long stack_head = state->stack->head;
 
-            json_eat_whitespace(state);
             if ((state->cursor < state->end) && (*state->cursor == ']')) {
                 state->cursor++;
                 return PUSH(rb_ary_new());
+            } else {
+                json_parse_any(state);
             }
 
-            while (state->cursor < state->end) {
-                json_parse_any(state);
+            while (true) {
+                json_eat_whitespace(state);
 
-                switch (*state->cursor) {
-                    case ',':
-                        state->cursor++;
-                        break;
-                    case ']': {
+                if (state->cursor < state->end) {
+                    if (*state->cursor == ']') {
                         state->cursor++;
                         long count = state->stack->head - stack_head;
                         return PUSH(json_decode_array(state, count));
                     }
-                    default:
-                        raise_parse_error("expected ',' or ']' after array value", state->cursor);
-                }
-            }
 
-            raise_parse_error("unexpected end of input, expected closing ]", state->cursor);
+                    if (*state->cursor == ',') {
+                        state->cursor++;
+                        if (state->json->allow_trailing_comma) {
+                            json_eat_whitespace(state);
+                            if ((state->cursor < state->end) && (*state->cursor == ']')) {
+                                continue;
+                            }
+                        }
+                        json_parse_any(state);
+                        continue;
+                    }
+                }
+
+                raise_parse_error("expected ',' or ']' after array value", state->cursor);
+            }
             break;
         }
         case '{': {
