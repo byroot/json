@@ -752,7 +752,7 @@ json_decode_array(JSON_ParserState *state, long count)
 {
     VALUE array;
     if (RB_UNLIKELY(state->json->array_class)) {
-        VALUE array = rb_class_new_instance(0, 0, state->json->array_class);
+        array = rb_class_new_instance(0, 0, state->json->array_class);
         VALUE *items = rvalue_stack_peek(state->stack, count);
         long index;
         for (index = 0; index < count; index++) {
@@ -761,7 +761,13 @@ json_decode_array(JSON_ParserState *state, long count)
     } else {
         array = rb_ary_new_from_values(count, rvalue_stack_peek(state->stack, count));
     }
+
     rvalue_stack_pop(state->stack, count);
+
+    if (state->json->freeze) {
+        RB_OBJ_FREEZE(array);
+    }
+
     return array;
 }
 
@@ -801,6 +807,10 @@ json_decode_object(JSON_ParserState *state, long count)
                 object = rb_funcall(klass, i_json_create, 1, object);
             }
         }
+    }
+
+    if (state->json->freeze) {
+        RB_OBJ_FREEZE(object);
     }
 
     return object;
@@ -961,11 +971,7 @@ json_parse_any(JSON_ParserState *state)
 
             if ((state->cursor < state->end) && (*state->cursor == ']')) {
                 state->cursor++;
-                VALUE array = rb_ary_new();
-                if (state->json->freeze) {
-                    RB_OBJ_FREEZE(array);
-                }
-                return PUSH(array);
+                return PUSH(json_decode_array(state, 0));
             } else {
                 state->current_nesting++;
                 if (RB_UNLIKELY(state->json->max_nesting && (state->json->max_nesting < state->current_nesting))) {
@@ -1011,11 +1017,7 @@ json_parse_any(JSON_ParserState *state)
 
             if ((state->cursor < state->end) && (*state->cursor == '}')) {
                 state->cursor++;
-                VALUE hash = rb_hash_new();
-                if (state->json->freeze) {
-                    RB_OBJ_FREEZE(hash);
-                }
-                return PUSH(hash);
+                return PUSH(json_decode_object(state, 0));
             } else {
                 state->current_nesting++;
                 if (RB_UNLIKELY(state->json->max_nesting && (state->json->max_nesting < state->current_nesting))) {
