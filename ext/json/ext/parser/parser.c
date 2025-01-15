@@ -745,7 +745,8 @@ json_parse_string(JSON_ParserState *state, bool is_name) {
 }
 
 static VALUE
-json_parse_any(JSON_ParserState *state) {
+json_parse_any(JSON_ParserState *state)
+{
     json_eat_whitespace(state);
     if (state->cursor >= state->end) {
         raise_parse_error("unexpected end of input", state->cursor);
@@ -939,6 +940,15 @@ json_parse_any(JSON_ParserState *state) {
     raise_parse_error("unexpected character: %s", state->cursor);
 }
 
+static void
+json_ensure_eof(JSON_ParserState *state)
+{
+    json_eat_whitespace(state);
+    if (state->cursor != state->end) {
+        raise_parse_error("unexpected token at end of stream %s", state->cursor);
+    }
+}
+
 /*
  * Document-class: JSON::Ext::Parser
  *
@@ -1062,7 +1072,9 @@ static VALUE cParserConfig_initialize(VALUE self, VALUE opts)
 static VALUE cParser_parse_safe(VALUE vstate)
 {
     JSON_ParserState *state = (JSON_ParserState *)vstate;
-    return json_parse_any(state);
+    VALUE result = json_parse_any(state);
+    json_ensure_eof(state);
+    return result;
 }
 
 static VALUE cParser_parse(JSON_Parser *json, VALUE Vsource)
