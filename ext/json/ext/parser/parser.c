@@ -444,8 +444,6 @@ static void raise_parse_error(const char *format, const char *start)
     rb_enc_raise(enc_utf8, rb_path2class("JSON::ParserError"), format, ptr);
 }
 
-#define MinusInfinity "-Infinity"
-
 static inline void
 json_eat_whitespace(JSON_ParserState *state) {
     while (state->cursor < state->end) {
@@ -456,6 +454,42 @@ json_eat_whitespace(JSON_ParserState *state) {
             case '\r':
                 state->cursor++;
                 break;
+            case '/': {
+                if (state->cursor + 1 < state->end) {
+                    switch(state->cursor[1]) {
+                        case '/': {
+                            state->cursor = memchr(state->cursor, '\n', state->end - state->cursor);
+                            if (!state->cursor) {
+                                state->cursor = state->end;
+                            } else {
+                                state->cursor++;
+                            }
+                            break;
+                        }
+                        case '*': {
+                            state->cursor += 2;
+                            while (true) {
+                                state->cursor = memchr(state->cursor, '*', state->end - state->cursor);
+                                if (!state->cursor) {
+                                    state->cursor = state->end;
+                                    break;
+                                } else {
+                                    state->cursor++;
+                                    if (state->cursor < state->end && *state->cursor == '/') {
+                                        state->cursor++;
+                                        break;
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                        default:
+                            return;
+                    }
+                }
+                break;
+            }
+
             default:
                 return;
         }
@@ -1030,7 +1064,7 @@ json_parse_any(JSON_ParserState *state)
 
                         json_eat_whitespace(state);
                         if ((state->cursor >= state->end) || (*state->cursor != ':')) {
-                            raise_parse_error("expected ':' after object key", state->cursor);
+                            raise_parse_error("expected ':' after object key, got: '%s", state->cursor);
                         }
                         state->cursor++;
 
@@ -1040,10 +1074,11 @@ json_parse_any(JSON_ParserState *state)
                     }
                 }
 
-                raise_parse_error("expected ',' or '}' after object value", state->cursor);
+                raise_parse_error("expected ',' or '}' after object value, got: '%s'", state->cursor);
             }
             break;
         }
+
         default:
             raise_parse_error("unexpected character: '%s'", state->cursor);
             break;
