@@ -713,6 +713,24 @@ json_decode_float(JSON_ParserState *state, const char *start, const char *end)
 }
 
 static inline VALUE
+json_decode_array(JSON_ParserState *state, long count)
+{
+    VALUE array;
+    if (RB_UNLIKELY(state->json->array_class)) {
+        VALUE array = rb_class_new_instance(0, 0, state->json->array_class);
+        VALUE *items = rvalue_stack_peek(state->stack, count);
+        long index;
+        for (index = 0; index < count; index++) {
+            rb_funcall(array, i_leftshift, 1, items[index]);
+        }
+    } else {
+        array = rb_ary_new_from_values(count, rvalue_stack_peek(state->stack, count));
+    }
+    rvalue_stack_pop(state->stack, count);
+    return array;
+}
+
+static inline VALUE
 json_decode_object(JSON_ParserState *state, long count)
 {
     VALUE object;
@@ -728,8 +746,9 @@ json_decode_object(JSON_ParserState *state, long count)
     } else {
         object = rb_hash_new_capa(count);
         rb_hash_bulk_insert(count, rvalue_stack_peek(state->stack, count), object);
-        rvalue_stack_pop(state->stack, count);
     }
+
+    rvalue_stack_pop(state->stack, count);
 
     if (RB_UNLIKELY(state->json->create_additions)) {
         VALUE klassname;
@@ -920,9 +939,7 @@ json_parse_any(JSON_ParserState *state)
                     case ']': {
                         state->cursor++;
                         long count = state->stack->head - stack_head;
-                        VALUE array = rb_ary_new_from_values(count, rvalue_stack_peek(state->stack, count));
-                        rvalue_stack_pop(state->stack, count);
-                        return PUSH(array);
+                        return PUSH(json_decode_array(state, count));
                     }
                     default:
                         raise_parse_error("expected ',' or ']' after array value", state->cursor);
