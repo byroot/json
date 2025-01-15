@@ -769,14 +769,39 @@ json_parse_any(JSON_ParserState *state) {
             raise_parse_error("unexpected character: %s", state->cursor);
             break;
         case 'f':
-            if ((state->end - state->cursor >= 5) && (memcmp(state->cursor, "false", 5) == 0)) {
+            // Note: memcmp with a small power of two compile to an integer comparison
+            if ((state->end - state->cursor >= 5) && (memcmp(state->cursor + 1, "alse", 4) == 0)) {
                 state->cursor += 5;
                 return PUSH(Qfalse);
             }
 
             raise_parse_error("unexpected character", state->cursor);
             break;
-        case '-': case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
+        case 'N':
+            // Note: memcmp with a small power of two compile to an integer comparison
+            if (state->json->allow_nan && (state->end - state->cursor >= 3) && (memcmp(state->cursor + 1, "aN", 2) == 0)) {
+                state->cursor += 3;
+                return PUSH(CNaN);
+            }
+
+            raise_parse_error("unexpected character: %s", state->cursor);
+            break;
+        case 'I':
+            if (state->json->allow_nan && (state->end - state->cursor >= 8) && (memcmp(state->cursor, "Infinity", 8) == 0)) {
+                state->cursor += 8;
+                return PUSH(CInfinity);
+            }
+
+            raise_parse_error("unexpected character", state->cursor);
+            break;
+        case '-':
+            // Note: memcmp with a small power of two compile to an integer comparison
+            if (state->json->allow_nan && (state->end - state->cursor >= 9) && (memcmp(state->cursor + 1, "Infinity", 8) == 0)) {
+                state->cursor += 9;
+                return PUSH(CMinusInfinity);
+            }
+            // Fallthrough
+        case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
             bool integer = true;
 
             // /\A-?(0|[1-9]\d*)(\.\d+)?([Ee][-+]?\d+)?/
