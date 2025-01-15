@@ -235,13 +235,14 @@ static rvalue_stack *rvalue_stack_grow(rvalue_stack *stack, VALUE *handle, rvalu
     return stack;
 }
 
-static void rvalue_stack_push(rvalue_stack *stack, VALUE value, VALUE *handle, rvalue_stack **stack_ref)
+static VALUE rvalue_stack_push(rvalue_stack *stack, VALUE value, VALUE *handle, rvalue_stack **stack_ref)
 {
     if (RB_UNLIKELY(stack->head >= stack->capa)) {
         stack = rvalue_stack_grow(stack, handle, stack_ref);
     }
     stack->ptr[stack->head] = value;
     stack->head++;
+    return value;
 }
 
 static inline VALUE *rvalue_stack_peek(rvalue_stack *stack, long count)
@@ -460,6 +461,94 @@ json_eat_whitespace(JSON_ParserState *state) {
     }
 }
 
+
+
+#define MAX_FAST_INTEGER_SIZE 18
+static inline VALUE fast_decode_integer(const char *p, const char *pe)
+{
+    bool negative = false;
+    if (*p == '-') {
+        negative = true;
+        p++;
+    }
+
+    long long memo = 0;
+    while (p < pe) {
+        memo *= 10;
+        memo += *p - '0';
+        p++;
+    }
+
+    if (negative) {
+        memo = -memo;
+    }
+    return LL2NUM(memo);
+}
+
+static VALUE
+json_decode_integer(JSON_ParserState *state, const char *start, const char *end)
+{
+        long len = end - start;
+        if (RB_LIKELY(len < MAX_FAST_INTEGER_SIZE)) {
+            return fast_decode_integer(start, end);
+        }
+
+        fbuffer_clear(&state->fbuffer);
+        fbuffer_append(&state->fbuffer, start, len);
+        fbuffer_append_char(&state->fbuffer, '\0');
+        return rb_cstr2inum(FBUFFER_PTR(&state->fbuffer), 10);
+}
+
+static VALUE
+json_decode_float(JSON_ParserState *state, const char *start, const char *end)
+{
+    VALUE mod = Qnil;
+    ID method_id = 0;
+    JSON_Parser *json = state->json;
+    if (json->decimal_class) {
+        // TODO: we should move this to the constructor
+        if (rb_respond_to(json->decimal_class, i_try_convert)) {
+            mod = json->decimal_class;
+            method_id = i_try_convert;
+        } else if (rb_respond_to(json->decimal_class, i_new)) {
+            mod = json->decimal_class;
+            method_id = i_new;
+        } else if (RB_TYPE_P(json->decimal_class, T_CLASS)) {
+            VALUE name = rb_class_name(json->decimal_class);
+            const char *name_cstr = RSTRING_PTR(name);
+            const char *last_colon = strrchr(name_cstr, ':');
+            if (last_colon) {
+                const char *mod_path_end = last_colon - 1;
+                VALUE mod_path = rb_str_substr(name, 0, mod_path_end - name_cstr);
+                mod = rb_path_to_class(mod_path);
+
+                const char *method_name_beg = last_colon + 1;
+                long before_len = method_name_beg - name_cstr;
+                long len = RSTRING_LEN(name) - before_len;
+                VALUE method_name = rb_str_substr(name, before_len, len);
+                method_id = SYM2ID(rb_str_intern(method_name));
+            } else {
+                mod = rb_mKernel;
+                method_id = SYM2ID(rb_str_intern(name));
+            }
+        }
+    }
+
+    long len = end - start;
+    fbuffer_clear(&state->fbuffer);
+    fbuffer_append(&state->fbuffer, start, len);
+    fbuffer_append_char(&state->fbuffer, '\0');
+
+    if (method_id) {
+        VALUE text = rb_str_new2(FBUFFER_PTR(&state->fbuffer));
+        return rb_funcallv(mod, method_id, 1, &text);
+    } else {
+        return DBL2NUM(rb_cstr_to_dbl(FBUFFER_PTR(&state->fbuffer), 1));
+    }
+}
+
+#define PUSH(result) rvalue_stack_push(state->stack, result, &state->stack_handle, &state->stack)
+
 static VALUE
 json_parse_any(JSON_ParserState *state) {
     json_eat_whitespace(state);
@@ -471,7 +560,7 @@ json_parse_any(JSON_ParserState *state) {
         case 'n':
             if ((state->end - state->cursor >= 4) && (memcmp(state->cursor, "null", 4) == 0)) {
                 state->cursor += 4;
-                return Qnil;
+                return PUSH(Qnil);
             }
 
             raise_parse_error("unexpected character", state->cursor);
@@ -479,7 +568,7 @@ json_parse_any(JSON_ParserState *state) {
         case 't':
             if ((state->end - state->cursor >= 4) && (memcmp(state->cursor, "true", 4) == 0)) {
                 state->cursor += 4;
-                return Qtrue;
+                return PUSH(Qtrue);
             }
 
             raise_parse_error("unexpected character", state->cursor);
@@ -487,12 +576,14 @@ json_parse_any(JSON_ParserState *state) {
         case 'f':
             if ((state->end - state->cursor >= 5) && (memcmp(state->cursor, "false", 5) == 0)) {
                 state->cursor += 5;
-                return Qfalse;
+                return PUSH(Qfalse);
             }
 
             raise_parse_error("unexpected character", state->cursor);
             break;
         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
+            bool integer = true;
+
             // /\A-?(0|[1-9]\d*)(\.\d+)?([Ee][-+]?\d+)?/
             const char *start = state->cursor;
             while ((state->cursor < state->end) && (*state->cursor >= '0') && (*state->cursor <= '9')) {
@@ -500,6 +591,7 @@ json_parse_any(JSON_ParserState *state) {
             }
 
             if ((state->cursor < state->end) && (*state->cursor == '.')) {
+                integer = false;
                 state->cursor++;
                 while ((state->cursor < state->end) && (*state->cursor >= '0') && (*state->cursor <= '9')) {
                     state->cursor++;
@@ -507,6 +599,7 @@ json_parse_any(JSON_ParserState *state) {
             }
 
             if ((state->cursor < state->end) && ((*state->cursor == 'e') || (*state->cursor == 'E'))) {
+                integer = false;
                 state->cursor++;
                 if ((state->cursor < state->end) && ((*state->cursor == '+') || (*state->cursor == '-'))) {
                     state->cursor++;
@@ -517,8 +610,10 @@ json_parse_any(JSON_ParserState *state) {
                 }
             }
 
-            // TODO: proper number parsing
-            return rb_cstr_to_inum((const char *) start, (int) (state->cursor - start), 10);
+            if (integer) {
+                return PUSH(json_decode_integer(state, start, state->cursor));
+            }
+            return PUSH(json_decode_float(state, start, state->cursor));
         }
         case '"': {
             // %r{\A"[^"\\\t\n\x00]*(?:\\[bfnrtu\\/"][^"\\]*)*"}
@@ -529,7 +624,7 @@ json_parse_any(JSON_ParserState *state) {
                 if (*state->cursor == '"') {
                     VALUE string = rb_enc_str_new((const char *) start, state->cursor - start, rb_utf8_encoding());
                     state->cursor++;
-                    return string;
+                    return PUSH(string);
                 } else if (*state->cursor == '\\') {
                     // Parse escape sequence
                     state->cursor++;
@@ -542,26 +637,29 @@ json_parse_any(JSON_ParserState *state) {
             break;
         }
         case '[': {
-            VALUE array = rb_ary_new();
             state->cursor++;
+            long stack_head = state->stack->head;
 
             json_eat_whitespace(state);
             if ((state->cursor < state->end) && (*state->cursor == ']')) {
                 state->cursor++;
-                return array;
+                return PUSH(rb_ary_new());
             }
 
             while (state->cursor < state->end) {
-                VALUE element = json_parse_any(state);
-                rb_ary_push(array, element);
+                json_parse_any(state);
 
                 switch (*state->cursor) {
                     case ',':
                         state->cursor++;
                         break;
-                    case ']':
+                    case ']': {
                         state->cursor++;
-                        return array;
+                        long count = state->stack->head - stack_head;
+                        VALUE array = rb_ary_new_from_values(count, rvalue_stack_peek(state->stack, count));
+                        rvalue_stack_pop(state->stack, count);
+                        return PUSH(array);
+                    }
                     default:
                         raise_parse_error("expected ',' or ']' after array value", state->cursor);
                 }
@@ -576,10 +674,11 @@ json_parse_any(JSON_ParserState *state) {
 
             if ((state->cursor < state->end) && (*state->cursor == '}')) {
                 state->cursor++;
-                return rb_hash_new();
+                return PUSH(rb_hash_new());
             }
 
-            VALUE elements = rb_ary_new();
+            long stack_head = state->stack->head;
+
             while (state->cursor < state->end) {
                 json_eat_whitespace(state);
                 if (*state->cursor != '"') {
@@ -595,8 +694,6 @@ json_parse_any(JSON_ParserState *state) {
                 state->cursor++;
 
                 VALUE value = json_parse_any(state);
-                VALUE pair[2] = { key, value };
-                rb_ary_cat(elements, pair, 2);
 
                 json_eat_whitespace(state);
                 switch (*state->cursor) {
@@ -605,9 +702,11 @@ json_parse_any(JSON_ParserState *state) {
                         break;
                     case '}': {
                         state->cursor++;
-                        VALUE value = rb_hash_new_capa(RARRAY_LEN(elements));
-                        rb_hash_bulk_insert(RARRAY_LEN(elements), RARRAY_CONST_PTR(elements), value);
-                        return value;
+                        long count = state->stack->head - stack_head;
+                        VALUE hash = rb_hash_new_capa(count);
+                        rb_hash_bulk_insert(count, rvalue_stack_peek(state->stack, count), hash);
+                        rvalue_stack_pop(state->stack, count);
+                        return PUSH(hash);
                     }
                     default:
                         raise_parse_error("expected ',' or '}' after object value", state->cursor);
