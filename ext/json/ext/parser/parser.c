@@ -851,23 +851,44 @@ static inline VALUE json_decode_string(JSON_ParserState *state, const char *star
 
 #define PUSH(result) rvalue_stack_push(state->stack, result, &state->stack_handle, &state->stack)
 
+static const bool string_scan[256] = {
+    // ASCII Control Characters
+     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    // ASCII Characters
+     0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // '"'
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, // '\\'
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+};
+
 static inline VALUE json_parse_string(JSON_ParserState *state, bool is_name) {
     state->cursor++;
     const char *start = state->cursor;
     bool escaped = false;
 
     while (state->cursor < state->end) {
-        if (*state->cursor == '"') {
-            VALUE string = json_decode_string(state, start, state->cursor, escaped, is_name);
-            state->cursor++;
-            return PUSH(string);
-        } else if (*state->cursor == '\\') {
-            state->cursor++;
-            escaped = true;
-        }
-
-        if ((unsigned char)*state->cursor < 0x20) {
-            raise_parse_error("invalid ASCII control character in string: %s", state->cursor);
+        if (RB_UNLIKELY(string_scan[(unsigned char)*state->cursor])) {
+            switch (*state->cursor) {
+                case '"': {
+                    VALUE string = json_decode_string(state, start, state->cursor, escaped, is_name);
+                    state->cursor++;
+                    return PUSH(string);
+                }
+                case '\\': {
+                    state->cursor++;
+                    escaped = true;
+                    if ((unsigned char)*state->cursor < 0x20) {
+                        raise_parse_error("invalid ASCII control character in string: %s", state->cursor);
+                    }
+                    break;
+                }
+                default:
+                    raise_parse_error("invalid ASCII control character in string: %s", state->cursor);
+                    break;
+            }
         }
 
         state->cursor++;
