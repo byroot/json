@@ -394,10 +394,10 @@ typedef struct JSON_ParserStruct {
     bool freeze;
     bool create_additions;
     bool deprecated_create_additions;
-} JSON_Parser;
+} JSON_ParserConfig;
 
 typedef struct JSON_ParserStateStruct {
-    JSON_Parser *json;
+    JSON_ParserConfig *config;
     VALUE stack_handle;
     const char *cursor;
     const char *end;
@@ -408,11 +408,11 @@ typedef struct JSON_ParserStateStruct {
     int current_nesting;
 } JSON_ParserState;
 
-#define GET_PARSER                          \
-    JSON_Parser *json;                      \
-    TypedData_Get_Struct(self, JSON_Parser, &JSON_Parser_type, json)
+#define GET_PARSER_CONFIG                          \
+    JSON_ParserConfig *config;                      \
+    TypedData_Get_Struct(self, JSON_ParserConfig, &JSON_ParserConfig_type, config)
 
-static const rb_data_type_t JSON_Parser_type;
+static const rb_data_type_t JSON_ParserConfig_type;
 
 #ifndef HAVE_STRNLEN
 static size_t strnlen(const char *s, size_t maxlen)
@@ -703,17 +703,17 @@ static VALUE json_decode_float(JSON_ParserState *state, const char *start, const
 {
     VALUE mod = Qnil;
     ID method_id = 0;
-    JSON_Parser *json = state->json;
-    if (json->decimal_class) {
+    JSON_ParserConfig *config = state->config;
+    if (config->decimal_class) {
         // TODO: we should move this to the constructor
-        if (rb_respond_to(json->decimal_class, i_try_convert)) {
-            mod = json->decimal_class;
+        if (rb_respond_to(config->decimal_class, i_try_convert)) {
+            mod = config->decimal_class;
             method_id = i_try_convert;
-        } else if (rb_respond_to(json->decimal_class, i_new)) {
-            mod = json->decimal_class;
+        } else if (rb_respond_to(config->decimal_class, i_new)) {
+            mod = config->decimal_class;
             method_id = i_new;
-        } else if (RB_TYPE_P(json->decimal_class, T_CLASS)) {
-            VALUE name = rb_class_name(json->decimal_class);
+        } else if (RB_TYPE_P(config->decimal_class, T_CLASS)) {
+            VALUE name = rb_class_name(config->decimal_class);
             const char *name_cstr = RSTRING_PTR(name);
             const char *last_colon = strrchr(name_cstr, ':');
             if (last_colon) {
@@ -749,8 +749,8 @@ static VALUE json_decode_float(JSON_ParserState *state, const char *start, const
 static inline VALUE json_decode_array(JSON_ParserState *state, long count)
 {
     VALUE array;
-    if (RB_UNLIKELY(state->json->array_class)) {
-        array = rb_class_new_instance(0, 0, state->json->array_class);
+    if (RB_UNLIKELY(state->config->array_class)) {
+        array = rb_class_new_instance(0, 0, state->config->array_class);
         VALUE *items = rvalue_stack_peek(state->stack, count);
         long index;
         for (index = 0; index < count; index++) {
@@ -762,7 +762,7 @@ static inline VALUE json_decode_array(JSON_ParserState *state, long count)
 
     rvalue_stack_pop(state->stack, count);
 
-    if (state->json->freeze) {
+    if (state->config->freeze) {
         RB_OBJ_FREEZE(array);
     }
 
@@ -772,8 +772,8 @@ static inline VALUE json_decode_array(JSON_ParserState *state, long count)
 static inline VALUE json_decode_object(JSON_ParserState *state, long count)
 {
     VALUE object;
-    if (RB_UNLIKELY(state->json->object_class)) {
-        object = rb_class_new_instance(0, 0, state->json->object_class);
+    if (RB_UNLIKELY(state->config->object_class)) {
+        object = rb_class_new_instance(0, 0, state->config->object_class);
         long index = 0;
         VALUE *items = rvalue_stack_peek(state->stack, count);
         while (index < count) {
@@ -788,17 +788,17 @@ static inline VALUE json_decode_object(JSON_ParserState *state, long count)
 
     rvalue_stack_pop(state->stack, count);
 
-    if (RB_UNLIKELY(state->json->create_additions)) {
+    if (RB_UNLIKELY(state->config->create_additions)) {
         VALUE klassname;
-        if (state->json->object_class) {
-            klassname = rb_funcall(object, i_aref, 1, state->json->create_id);
+        if (state->config->object_class) {
+            klassname = rb_funcall(object, i_aref, 1, state->config->create_id);
         } else {
-            klassname = rb_hash_aref(object, state->json->create_id);
+            klassname = rb_hash_aref(object, state->config->create_id);
         }
         if (!NIL_P(klassname)) {
             VALUE klass = rb_funcall(mJSON, i_deep_const_get, 1, klassname);
             if (RTEST(rb_funcall(klass, i_json_creatable_p, 0))) {
-                if (state->json->deprecated_create_additions) {
+                if (state->config->deprecated_create_additions) {
                     json_deprecated(deprecated_create_additions_warning);
                 }
                 object = rb_funcall(klass, i_json_create, 1, object);
@@ -806,7 +806,7 @@ static inline VALUE json_decode_object(JSON_ParserState *state, long count)
         }
     }
 
-    if (state->json->freeze) {
+    if (state->config->freeze) {
         RB_OBJ_FREEZE(object);
     }
 
@@ -827,19 +827,19 @@ static int match_i(VALUE regexp, VALUE klass, VALUE memo)
 static inline VALUE json_decode_string(JSON_ParserState *state, const char *start, const char *end, bool escaped, bool is_name)
 {
     VALUE string;
-    bool intern = is_name || state->json->freeze;
-    bool symbolize = is_name && state->json->symbolize_names;
+    bool intern = is_name || state->config->freeze;
+    bool symbolize = is_name && state->config->symbolize_names;
     if (escaped) {
         string = json_string_unescape(state, start, end, is_name, intern, symbolize);
     } else {
         string = json_string_fastpath(state, start, end, is_name, intern, symbolize);
     }
 
-    if (RB_UNLIKELY(state->json->create_additions && RTEST(state->json->match_string))) {
+    if (RB_UNLIKELY(state->config->create_additions && RTEST(state->config->match_string))) {
           VALUE klass;
           VALUE memo = rb_ary_new2(2);
           rb_ary_push(memo, string);
-          rb_hash_foreach(state->json->match_string, match_i, memo);
+          rb_hash_foreach(state->config->match_string, match_i, memo);
           klass = rb_ary_entry(memo, 1);
           if (RTEST(klass)) {
               string = rb_funcall(klass, i_json_create, 1, string);
@@ -912,7 +912,7 @@ static VALUE json_parse_any(JSON_ParserState *state)
             break;
         case 'N':
             // Note: memcmp with a small power of two compile to an integer comparison
-            if (state->json->allow_nan && (state->end - state->cursor >= 3) && (memcmp(state->cursor + 1, "aN", 2) == 0)) {
+            if (state->config->allow_nan && (state->end - state->cursor >= 3) && (memcmp(state->cursor + 1, "aN", 2) == 0)) {
                 state->cursor += 3;
                 return PUSH(CNaN);
             }
@@ -920,7 +920,7 @@ static VALUE json_parse_any(JSON_ParserState *state)
             raise_parse_error("unexpected character: %s", state->cursor);
             break;
         case 'I':
-            if (state->json->allow_nan && (state->end - state->cursor >= 8) && (memcmp(state->cursor, "Infinity", 8) == 0)) {
+            if (state->config->allow_nan && (state->end - state->cursor >= 8) && (memcmp(state->cursor, "Infinity", 8) == 0)) {
                 state->cursor += 8;
                 return PUSH(CInfinity);
             }
@@ -929,7 +929,7 @@ static VALUE json_parse_any(JSON_ParserState *state)
             break;
         case '-':
             // Note: memcmp with a small power of two compile to an integer comparison
-            if (state->json->allow_nan && (state->end - state->cursor >= 9) && (memcmp(state->cursor + 1, "Infinity", 8) == 0)) {
+            if (state->config->allow_nan && (state->end - state->cursor >= 9) && (memcmp(state->cursor + 1, "Infinity", 8) == 0)) {
                 state->cursor += 9;
                 return PUSH(CMinusInfinity);
             }
@@ -1002,7 +1002,7 @@ static VALUE json_parse_any(JSON_ParserState *state)
                 return PUSH(json_decode_array(state, 0));
             } else {
                 state->current_nesting++;
-                if (RB_UNLIKELY(state->json->max_nesting && (state->json->max_nesting < state->current_nesting))) {
+                if (RB_UNLIKELY(state->config->max_nesting && (state->config->max_nesting < state->current_nesting))) {
                     rb_raise(eNestingError, "nesting of %d is too deep", state->current_nesting);
                 }
                 state->in_array++;
@@ -1023,7 +1023,7 @@ static VALUE json_parse_any(JSON_ParserState *state)
 
                     if (*state->cursor == ',') {
                         state->cursor++;
-                        if (state->json->allow_trailing_comma) {
+                        if (state->config->allow_trailing_comma) {
                             json_eat_whitespace(state);
                             if ((state->cursor < state->end) && (*state->cursor == ']')) {
                                 continue;
@@ -1048,7 +1048,7 @@ static VALUE json_parse_any(JSON_ParserState *state)
                 return PUSH(json_decode_object(state, 0));
             } else {
                 state->current_nesting++;
-                if (RB_UNLIKELY(state->json->max_nesting && (state->json->max_nesting < state->current_nesting))) {
+                if (RB_UNLIKELY(state->config->max_nesting && (state->config->max_nesting < state->current_nesting))) {
                     rb_raise(eNestingError, "nesting of %d is too deep", state->current_nesting);
                 }
 
@@ -1081,7 +1081,7 @@ static VALUE json_parse_any(JSON_ParserState *state)
                         state->cursor++;
                         json_eat_whitespace(state);
 
-                        if (state->json->allow_trailing_comma) {
+                        if (state->config->allow_trailing_comma) {
                             if ((state->cursor < state->end) && (*state->cursor == '}')) {
                                 continue;
                             }
@@ -1155,50 +1155,50 @@ static VALUE convert_encoding(VALUE source)
 
 static int configure_parser_i(VALUE key, VALUE val, VALUE data)
 {
-    JSON_Parser *json = (JSON_Parser *)data;
+    JSON_ParserConfig *config = (JSON_ParserConfig *)data;
 
-         if (key == sym_max_nesting)          { json->max_nesting = RTEST(val) ? FIX2INT(val) : 0; }
-    else if (key == sym_allow_nan)            { json->allow_nan = RTEST(val); }
-    else if (key == sym_allow_trailing_comma) { json->allow_trailing_comma = RTEST(val); }
-    else if (key == sym_symbolize_names)      { json->symbolize_names = RTEST(val); }
-    else if (key == sym_freeze)               { json->freeze = RTEST(val); }
-    else if (key == sym_create_id)            { json->create_id = RTEST(val) ? val : Qfalse; }
-    else if (key == sym_object_class)         { json->object_class = RTEST(val) ? val : Qfalse; }
-    else if (key == sym_array_class)          { json->array_class = RTEST(val) ? val : Qfalse; }
-    else if (key == sym_decimal_class)        { json->decimal_class = RTEST(val) ? val : Qfalse; }
-    else if (key == sym_match_string)         { json->match_string = RTEST(val) ? val : Qfalse; }
+         if (key == sym_max_nesting)          { config->max_nesting = RTEST(val) ? FIX2INT(val) : 0; }
+    else if (key == sym_allow_nan)            { config->allow_nan = RTEST(val); }
+    else if (key == sym_allow_trailing_comma) { config->allow_trailing_comma = RTEST(val); }
+    else if (key == sym_symbolize_names)      { config->symbolize_names = RTEST(val); }
+    else if (key == sym_freeze)               { config->freeze = RTEST(val); }
+    else if (key == sym_create_id)            { config->create_id = RTEST(val) ? val : Qfalse; }
+    else if (key == sym_object_class)         { config->object_class = RTEST(val) ? val : Qfalse; }
+    else if (key == sym_array_class)          { config->array_class = RTEST(val) ? val : Qfalse; }
+    else if (key == sym_decimal_class)        { config->decimal_class = RTEST(val) ? val : Qfalse; }
+    else if (key == sym_match_string)         { config->match_string = RTEST(val) ? val : Qfalse; }
     else if (key == sym_create_additions)     {
         if (NIL_P(val)) {
-            json->create_additions = true;
-            json->deprecated_create_additions = true;
+            config->create_additions = true;
+            config->deprecated_create_additions = true;
         } else {
-            json->create_additions = RTEST(val);
-            json->deprecated_create_additions = false;
+            config->create_additions = RTEST(val);
+            config->deprecated_create_additions = false;
         }
     }
 
     return ST_CONTINUE;
 }
 
-static void parser_init(JSON_Parser *json, VALUE opts)
+static void parser_config_init(JSON_ParserConfig *config, VALUE opts)
 {
-    json->max_nesting = 100;
+    config->max_nesting = 100;
 
     if (!NIL_P(opts)) {
         Check_Type(opts, T_HASH);
         if (RHASH_SIZE(opts) > 0) {
             // We assume in most cases few keys are set so it's faster to go over
             // the provided keys than to check all possible keys.
-            rb_hash_foreach(opts, configure_parser_i, (VALUE)json);
+            rb_hash_foreach(opts, configure_parser_i, (VALUE)config);
 
-            if (json->symbolize_names && json->create_additions) {
+            if (config->symbolize_names && config->create_additions) {
                 rb_raise(rb_eArgError,
                     "options :symbolize_names and :create_additions cannot be "
                     " used in conjunction");
             }
 
-            if (json->create_additions && !json->create_id) {
-                json->create_id = rb_funcall(mJSON, i_create_id, 0);
+            if (config->create_additions && !config->create_id) {
+                config->create_id = rb_funcall(mJSON, i_create_id, 0);
             }
         }
 
@@ -1239,9 +1239,9 @@ static void parser_init(JSON_Parser *json, VALUE opts)
  */
 static VALUE cParserConfig_initialize(VALUE self, VALUE opts)
 {
-    GET_PARSER;
+    GET_PARSER_CONFIG;
 
-    parser_init(json, opts);
+    parser_config_init(config, opts);
     return self;
 }
 
@@ -1253,7 +1253,7 @@ static VALUE cParser_parse_safe(VALUE vstate)
     return result;
 }
 
-static VALUE cParser_parse(JSON_Parser *json, VALUE Vsource)
+static VALUE cParser_parse(JSON_ParserConfig *config, VALUE Vsource)
 {
     Vsource = convert_encoding(StringValue(Vsource));
     StringValue(Vsource);
@@ -1266,7 +1266,7 @@ static VALUE cParser_parse(JSON_Parser *json, VALUE Vsource)
     };
 
     JSON_ParserState _state = {
-        .json = json,
+        .config = config,
         .cursor = RSTRING_PTR(Vsource),
         .end = RSTRING_PTR(Vsource) + RSTRING_LEN(Vsource),
         .stack = &stack,
@@ -1297,8 +1297,8 @@ static VALUE cParser_parse(JSON_Parser *json, VALUE Vsource)
  */
 static VALUE cParserConfig_parse(VALUE self, VALUE Vsource)
 {
-    GET_PARSER;
-    return cParser_parse(json, Vsource);
+    GET_PARSER_CONFIG;
+    return cParser_parse(config, Vsource);
 }
 
 static VALUE cParser_m_parse(VALUE klass, VALUE Vsource, VALUE opts)
@@ -1306,36 +1306,36 @@ static VALUE cParser_m_parse(VALUE klass, VALUE Vsource, VALUE opts)
     Vsource = convert_encoding(StringValue(Vsource));
     StringValue(Vsource);
 
-    JSON_Parser _parser = {0};
-    JSON_Parser *json = &_parser;
-    parser_init(json, opts);
+    JSON_ParserConfig _config = {0};
+    JSON_ParserConfig *config = &_config;
+    parser_config_init(config, opts);
 
-    return cParser_parse(json, Vsource);
+    return cParser_parse(config, Vsource);
 }
 
 static void JSON_mark(void *ptr)
 {
-    JSON_Parser *json = ptr;
-    rb_gc_mark(json->create_id);
-    rb_gc_mark(json->object_class);
-    rb_gc_mark(json->array_class);
-    rb_gc_mark(json->decimal_class);
-    rb_gc_mark(json->match_string);
+    JSON_ParserConfig *config = ptr;
+    rb_gc_mark(config->create_id);
+    rb_gc_mark(config->object_class);
+    rb_gc_mark(config->array_class);
+    rb_gc_mark(config->decimal_class);
+    rb_gc_mark(config->match_string);
 }
 
 static void JSON_free(void *ptr)
 {
-    JSON_Parser *json = ptr;
-    ruby_xfree(json);
+    JSON_ParserConfig *config = ptr;
+    ruby_xfree(config);
 }
 
 static size_t JSON_memsize(const void *ptr)
 {
-    return sizeof(JSON_Parser);
+    return sizeof(JSON_ParserConfig);
 }
 
-static const rb_data_type_t JSON_Parser_type = {
-    "JSON/Parser",
+static const rb_data_type_t JSON_ParserConfig_type = {
+    "JSON/ParserConfig",
     {JSON_mark, JSON_free, JSON_memsize,},
     0, 0,
     RUBY_TYPED_FREE_IMMEDIATELY,
@@ -1343,8 +1343,8 @@ static const rb_data_type_t JSON_Parser_type = {
 
 static VALUE cJSON_parser_s_allocate(VALUE klass)
 {
-    JSON_Parser *json;
-    return TypedData_Make_Struct(klass, JSON_Parser, &JSON_Parser_type, json);
+    JSON_ParserConfig *config;
+    return TypedData_Make_Struct(klass, JSON_ParserConfig, &JSON_ParserConfig_type, config);
 }
 
 void Init_parser(void)
