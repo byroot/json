@@ -306,10 +306,12 @@ static rvalue_stack *rvalue_stack_spill(rvalue_stack *old_stack, VALUE *handle, 
 
 static void rvalue_stack_eagerly_release(VALUE handle)
 {
-    rvalue_stack *stack;
-    TypedData_Get_Struct(handle, rvalue_stack, &JSON_Parser_rvalue_stack_type, stack);
-    RTYPEDDATA_DATA(handle) = NULL;
-    rvalue_stack_free(stack);
+    if (handle) {
+        rvalue_stack *stack;
+        TypedData_Get_Struct(handle, rvalue_stack, &JSON_Parser_rvalue_stack_type, stack);
+        RTYPEDDATA_DATA(handle) = NULL;
+        rvalue_stack_free(stack);
+    }
 }
 
 /* unicode */
@@ -522,7 +524,7 @@ static inline VALUE build_string(const char *start, const char *end, bool intern
     return result;
 }
 
-static inline VALUE json_string_fastpath(JSON_ParserState *state, char *string, char *stringEnd, bool is_name, bool intern, bool symbolize)
+static inline VALUE json_string_fastpath(JSON_ParserState *state, const char *string, const char *stringEnd, bool is_name, bool intern, bool symbolize)
 {
     size_t bufferSize = stringEnd - string;
 
@@ -542,10 +544,11 @@ static inline VALUE json_string_fastpath(JSON_ParserState *state, char *string, 
     return build_string(string, stringEnd, intern, symbolize);
 }
 
-static VALUE json_string_unescape(JSON_ParserState *state, char *string, char *stringEnd, bool is_name, bool intern, bool symbolize)
+static VALUE json_string_unescape(JSON_ParserState *state, const char *string, const char *stringEnd, bool is_name, bool intern, bool symbolize)
 {
     size_t bufferSize = stringEnd - string;
-    char *p = string, *pe = string, *unescape, *bufferStart, *buffer;
+    const char *p = string, *pe = string, *unescape, *bufferStart;
+    char *buffer;
     int unescape_len;
     char buf[4];
 
@@ -569,7 +572,8 @@ static VALUE json_string_unescape(JSON_ParserState *state, char *string, char *s
 
     VALUE result = rb_str_buf_new(bufferSize);
     rb_enc_associate_index(result, utf8_encindex);
-    buffer = bufferStart = RSTRING_PTR(result);
+    buffer = RSTRING_PTR(result);
+    bufferStart = buffer;
 
     while (pe < stringEnd) {
         if (*pe == '\\') {
@@ -1283,6 +1287,7 @@ static VALUE cParser_parse(JSON_Parser *json, VALUE Vsource)
     int interupted;
     VALUE result = rb_protect(cParser_parse_safe, (VALUE)state, &interupted);
 
+    rvalue_stack_eagerly_release(state->stack_handle);
     fbuffer_free(&state->fbuffer);
     if (interupted) {
         rb_jump_tag(interupted);
