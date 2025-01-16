@@ -442,54 +442,59 @@ static void raise_parse_error(const char *format, const char *start)
     rb_enc_raise(enc_utf8, rb_path2class("JSON::ParserError"), format, ptr);
 }
 
-static inline void
-json_eat_whitespace(JSON_ParserState *state) {
-    while (state->cursor < state->end) {
-        switch (*state->cursor) {
-            case ' ':
-            case '\t':
-            case '\n':
-            case '\r':
-                state->cursor++;
-                break;
+static const bool whitespace[256] = {
+    [' '] = 1,
+    ['\t'] = 1,
+    ['\n'] = 1,
+    ['\r'] = 1,
+    ['/'] = 1,
+};
+
+static void
+json_eat_comments(JSON_ParserState *state)
+{
+    if (state->cursor + 1 < state->end) {
+        switch(state->cursor[1]) {
             case '/': {
-                if (state->cursor + 1 < state->end) {
-                    switch(state->cursor[1]) {
-                        case '/': {
-                            state->cursor = memchr(state->cursor, '\n', state->end - state->cursor);
-                            if (!state->cursor) {
-                                state->cursor = state->end;
-                            } else {
-                                state->cursor++;
-                            }
+                state->cursor = memchr(state->cursor, '\n', state->end - state->cursor);
+                if (!state->cursor) {
+                    state->cursor = state->end;
+                } else {
+                    state->cursor++;
+                }
+                break;
+            }
+            case '*': {
+                state->cursor += 2;
+                while (true) {
+                    state->cursor = memchr(state->cursor, '*', state->end - state->cursor);
+                    if (!state->cursor) {
+                        state->cursor = state->end;
+                        break;
+                    } else {
+                        state->cursor++;
+                        if (state->cursor < state->end && *state->cursor == '/') {
+                            state->cursor++;
                             break;
                         }
-                        case '*': {
-                            state->cursor += 2;
-                            while (true) {
-                                state->cursor = memchr(state->cursor, '*', state->end - state->cursor);
-                                if (!state->cursor) {
-                                    state->cursor = state->end;
-                                    break;
-                                } else {
-                                    state->cursor++;
-                                    if (state->cursor < state->end && *state->cursor == '/') {
-                                        state->cursor++;
-                                        break;
-                                    }
-                                }
-                            }
-                            break;
-                        }
-                        default:
-                            return;
                     }
                 }
                 break;
             }
-
             default:
                 return;
+        }
+    }
+}
+
+static inline void
+json_eat_whitespace(JSON_ParserState *state)
+{
+    while (state->cursor < state->end && RB_UNLIKELY(whitespace[(unsigned char)*state->cursor])) {
+        if (RB_LIKELY(*state->cursor != '/')) {
+            state->cursor++;
+        } else {
+            json_eat_comments(state);
         }
     }
 }
