@@ -522,7 +522,7 @@ static inline VALUE build_string(const char *start, const char *end, bool intern
     return result;
 }
 
-static VALUE json_string_fastpath(JSON_ParserState *state, char *string, char *stringEnd, bool is_name, bool intern, bool symbolize)
+static inline VALUE json_string_fastpath(JSON_ParserState *state, char *string, char *stringEnd, bool is_name, bool intern, bool symbolize)
 {
     size_t bufferSize = stringEnd - string;
 
@@ -699,8 +699,7 @@ json_decode_integer(JSON_ParserState *state, const char *start, const char *end)
         return rb_cstr2inum(FBUFFER_PTR(&state->fbuffer), 10);
 }
 
-static VALUE
-json_decode_float(JSON_ParserState *state, const char *start, const char *end)
+static VALUE json_decode_float(JSON_ParserState *state, const char *start, const char *end)
 {
     VALUE mod = Qnil;
     ID method_id = 0;
@@ -747,8 +746,7 @@ json_decode_float(JSON_ParserState *state, const char *start, const char *end)
     }
 }
 
-static inline VALUE
-json_decode_array(JSON_ParserState *state, long count)
+static inline VALUE json_decode_array(JSON_ParserState *state, long count)
 {
     VALUE array;
     if (RB_UNLIKELY(state->json->array_class)) {
@@ -771,8 +769,7 @@ json_decode_array(JSON_ParserState *state, long count)
     return array;
 }
 
-static inline VALUE
-json_decode_object(JSON_ParserState *state, long count)
+static inline VALUE json_decode_object(JSON_ParserState *state, long count)
 {
     VALUE object;
     if (RB_UNLIKELY(state->json->object_class)) {
@@ -816,8 +813,7 @@ json_decode_object(JSON_ParserState *state, long count)
     return object;
 }
 
-static int
-match_i(VALUE regexp, VALUE klass, VALUE memo)
+static int match_i(VALUE regexp, VALUE klass, VALUE memo)
 {
     if (regexp == Qundef) return ST_STOP;
     if (RTEST(rb_funcall(klass, i_json_creatable_p, 0)) &&
@@ -828,8 +824,7 @@ match_i(VALUE regexp, VALUE klass, VALUE memo)
     return ST_CONTINUE;
 }
 
-static inline VALUE
-json_decode_string(JSON_ParserState *state, const char *start, const char *end, bool escaped, bool is_name)
+static inline VALUE json_decode_string(JSON_ParserState *state, const char *start, const char *end, bool escaped, bool is_name)
 {
     VALUE string;
     bool intern = is_name || state->json->freeze;
@@ -856,8 +851,7 @@ json_decode_string(JSON_ParserState *state, const char *start, const char *end, 
 
 #define PUSH(result) rvalue_stack_push(state->stack, result, &state->stack_handle, &state->stack)
 
-static inline VALUE
-json_parse_string(JSON_ParserState *state, bool is_name) {
+static inline VALUE json_parse_string(JSON_ParserState *state, bool is_name) {
     state->cursor++;
     const char *start = state->cursor;
     bool escaped = false;
@@ -883,8 +877,7 @@ json_parse_string(JSON_ParserState *state, bool is_name) {
     return Qfalse;
 }
 
-static VALUE
-json_parse_any(JSON_ParserState *state)
+static VALUE json_parse_any(JSON_ParserState *state)
 {
     json_eat_whitespace(state);
     if (state->cursor >= state->end) {
@@ -1124,8 +1117,7 @@ json_parse_any(JSON_ParserState *state)
     raise_parse_error("unreacheable: '%s'", state->cursor);
 }
 
-static void
-json_ensure_eof(JSON_ParserState *state)
+static void json_ensure_eof(JSON_ParserState *state)
 {
     json_eat_whitespace(state);
     if (state->cursor != state->end) {
