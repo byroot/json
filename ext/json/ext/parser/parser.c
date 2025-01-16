@@ -398,13 +398,9 @@ typedef struct JSON_ParserStruct {
 
 typedef struct JSON_ParserStateStruct {
     JSON_Parser *json;
-    VALUE Vsource;
     VALUE stack_handle;
-    char *source;
     const char *cursor;
     const char *end;
-    long len;
-    char *memo;
     FBuffer fbuffer;
     rvalue_stack *stack;
     rvalue_cache name_cache;
@@ -1271,12 +1267,8 @@ static VALUE cParser_parse(JSON_Parser *json, VALUE Vsource)
 
     JSON_ParserState _state = {
         .json = json,
-        // TODO: get rid of redundant fields
-        .len = RSTRING_LEN(Vsource),
-        .source = RSTRING_PTR(Vsource),
         .cursor = RSTRING_PTR(Vsource),
         .end = RSTRING_PTR(Vsource) + RSTRING_LEN(Vsource),
-        .Vsource = Vsource,
         .stack = &stack,
     };
     JSON_ParserState *state = &_state;
