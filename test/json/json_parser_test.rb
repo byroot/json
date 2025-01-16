@@ -625,7 +625,7 @@ class JSONParserTest < Test::Unit::TestCase
       JSON.parse('{"input":{"firstName":"Bob","lastName":"Mob","email":"bob@example.com"}')
     end
     if RUBY_ENGINE == "ruby"
-      assert_equal %(unexpected token at '{"input":{"firstName":"Bob","las'), error.message
+      assert_equal %(expected ',' or '}' after object value, got: ''), error.message
     end
   end
 

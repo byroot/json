@@ -891,7 +891,7 @@ static VALUE json_parse_any(JSON_ParserState *state)
                 return PUSH(Qnil);
             }
 
-            raise_parse_error("unexpected character: %s", state->cursor);
+            raise_parse_error("unexpected token at '%s'", state->cursor);
             break;
         case 't':
             if ((state->end - state->cursor >= 4) && (memcmp(state->cursor, "true", 4) == 0)) {
@@ -899,7 +899,7 @@ static VALUE json_parse_any(JSON_ParserState *state)
                 return PUSH(Qtrue);
             }
 
-            raise_parse_error("unexpected character: %s", state->cursor);
+            raise_parse_error("unexpected token at '%s'", state->cursor);
             break;
         case 'f':
             // Note: memcmp with a small power of two compile to an integer comparison
@@ -908,7 +908,7 @@ static VALUE json_parse_any(JSON_ParserState *state)
                 return PUSH(Qfalse);
             }
 
-            raise_parse_error("unexpected character", state->cursor);
+            raise_parse_error("unexpected token at '%s'", state->cursor);
             break;
         case 'N':
             // Note: memcmp with a small power of two compile to an integer comparison
@@ -917,7 +917,7 @@ static VALUE json_parse_any(JSON_ParserState *state)
                 return PUSH(CNaN);
             }
 
-            raise_parse_error("unexpected character: %s", state->cursor);
+            raise_parse_error("unexpected token at '%s'", state->cursor);
             break;
         case 'I':
             if (state->config->allow_nan && (state->end - state->cursor >= 8) && (memcmp(state->cursor, "Infinity", 8) == 0)) {
@@ -925,13 +925,17 @@ static VALUE json_parse_any(JSON_ParserState *state)
                 return PUSH(CInfinity);
             }
 
-            raise_parse_error("unexpected character", state->cursor);
+            raise_parse_error("unexpected token at '%s'", state->cursor);
             break;
         case '-':
             // Note: memcmp with a small power of two compile to an integer comparison
-            if (state->config->allow_nan && (state->end - state->cursor >= 9) && (memcmp(state->cursor + 1, "Infinity", 8) == 0)) {
-                state->cursor += 9;
-                return PUSH(CMinusInfinity);
+            if ((state->end - state->cursor >= 9) && (memcmp(state->cursor + 1, "Infinity", 8) == 0)) {
+                if (state->config->allow_nan) {
+                    state->cursor += 9;
+                    return PUSH(CMinusInfinity);
+                } else {
+                    raise_parse_error("unexpected token at '%s'", state->cursor);
+                }
             }
             // Fallthrough
         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
