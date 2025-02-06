@@ -42,8 +42,8 @@ jobs:
         uses: ruby/setup-ruby-pkgs@v1
         with:
           ruby-version: ${{ matrix.ruby }}
-          apt-get: ragel
-          brew: ragel
+          apt-get: "${{ startsWith(matrix.ruby, 'jruby') && 'ragel' }}"
+          brew: "${{ startsWith(matrix.ruby, 'jruby') && 'ragel' }}"
 
       - run: |
           bundle config --without benchmark
@@ -71,7 +71,7 @@ jobs:
         uses: ruby/setup-ruby-pkgs@v1
         with:
           ruby-version: "3.3"
-          apt-get: ragel valgrind
+          apt-get: valgrind
 
       - run: |
           bundle config --without benchmark
