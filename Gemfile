@@ -10,16 +10,17 @@ group :development do
   gem "test-unit"
   gem "test-unit-ruby-core"
   gem "all_images", "~> 0" unless RUBY_PLATFORM =~ /java/
+end
 
-  # For release
+group :release do
   gem "net-http"
   gem "uri"
+end
 
-  if ENV['BENCHMARK']
-    gem "benchmark-ips"
-    unless RUBY_PLATFORM =~ /java/
-      gem "oj"
-      gem "rapidjson"
-    end
+if ENV['BENCHMARK']
+  gem "benchmark-ips"
+  unless RUBY_PLATFORM =~ /java/
+    gem "oj"
+    gem "rapidjson"
   end
 end
