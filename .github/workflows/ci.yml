@@ -86,6 +86,7 @@ jobs:
       - run: bundle exec rake valgrind JSON_COMPACT=1
 
   check_for_release:
+    # TODO: run only on master
     # if: github.ref == 'refs/heads/auto-release'
     needs: [host, valgrind]
     runs-on: ubuntu-latest
