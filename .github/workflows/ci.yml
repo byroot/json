@@ -9,7 +9,7 @@ jobs:
   ruby-versions:
     uses: ruby/actions/.github/workflows/ruby_versions.yml@master
     with:
-      engine: cruby-jruby
+      engine: cruby # -jruby
       min_version: 3.4
 
   host:
