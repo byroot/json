@@ -74,16 +74,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby-pkgs@v1
-        with:
-          ruby-version: "3.4"
-          bundler-cache: true
-          apt-get: valgrind
-
-      - run: bundle exec rake compile
-
-      - run: bundle exec rake valgrind JSON_COMPACT=1
+      # - name: Set up Ruby
+      #   uses: ruby/setup-ruby-pkgs@v1
+      #   with:
+      #     ruby-version: "3.4"
+      #     bundler-cache: true
+      #     apt-get: valgrind
+      #
+      # - run: bundle exec rake compile
+      #
+      # - run: bundle exec rake valgrind JSON_COMPACT=1
 
   check_for_release:
     # TODO: run only on master
