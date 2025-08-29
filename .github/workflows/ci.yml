@@ -68,19 +68,37 @@ jobs:
     strategy:
       fail-fast: false
 
+    env:
+      BUNDLE_WITHOUT: benchmark
+
     steps:
       - uses: actions/checkout@v5
 
       - name: Set up Ruby
         uses: ruby/setup-ruby-pkgs@v1
         with:
-          ruby-version: "3.3"
+          ruby-version: "3.4"
+          bundler-cache: true
           apt-get: valgrind
 
-      - run: |
-          bundle config --without benchmark
-          bundle install
+      - run: bundle exec rake compile
 
-      - run: rake compile
+      - run: bundle exec rake valgrind JSON_COMPACT=1
 
-      - run: rake valgrind JSON_COMPACT=1
+  check_for_release:
+    if: github.ref == 'refs/heads/auto-release'
+    needs: [host, valgrind]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - run: bundle exec rake ci:check_release

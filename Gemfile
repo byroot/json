@@ -11,6 +11,10 @@ group :development do
   gem "test-unit-ruby-core"
   gem "all_images", "~> 0" unless RUBY_PLATFORM =~ /java/
 
+  # For release
+  gem "net-http"
+  gem "uri"
+
   if ENV['BENCHMARK']
     gem "benchmark-ips"
     unless RUBY_PLATFORM =~ /java/

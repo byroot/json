@@ -16,6 +16,10 @@
 * Fix `JSON.generate` `strict: true` mode to also restrict hash keys.
 * Fix `JSON::Coder` to also invoke block for hash keys that aren't strings nor symbols.
 
+### 2025-07-28 (2.14.0.alpha1)
+
+- Just testing.
+
 ### 2025-07-28 (2.13.2)
 
 * Improve duplicate key warning and errors to include the key name and point to the right caller.

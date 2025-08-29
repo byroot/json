@@ -12,6 +12,54 @@ PKG_VERSION       = File.foreach(File.join(__dir__, "lib/json/version.rb")) do |
   /^\s*VERSION\s*=\s*'(.*)'/ =~ line and break $1
 end rescue nil
 
+module CI
+  extend self
+
+  def gem_published?(name, version)
+    require 'net/https'
+    require 'uri'
+    uri = URI.parse("https://rubygems.org/api/v2/rubygems/#{name}/versions/#{version}.json")
+    Net::HTTP.get_response(uri).is_a?(Net::HTTPSuccess)
+  end
+
+  def changelog(version)
+    changelog_lines = File.readlines(File.expand_path("CHANGES.md", __dir__))
+    changelog_lines = changelog_lines.drop_while { |line| !(line.start_with?("### ") && line.include?("(#{version})")) }
+    if changelog_lines.empty?
+      return false
+    end
+    changelog_lines.shift
+    changelog_lines = changelog_lines.take_while { |line| !(line.start_with?("### ") ) }
+    changelog_lines.join
+  end
+
+  def prerelease?(version)
+    !version.match?(/\A[\d.]+\z/)
+  end
+end
+
+namespace :ci do
+  task :check_release do
+    unless PKG_VERSION
+      abort("Gem version couldn't be read")
+    end
+
+    if CI.gem_published?("json", PKG_VERSION)
+      $stderr.puts "Version #{PKG_VERSION} was already released. Nothing to do."
+      exit 0
+    end
+
+    if changelog = CI.changelog(PKG_VERSION)
+      puts "Changelog:"
+      puts changelog
+    else
+      abort("Could not find version #{PKG_VERSION} in CHANGES.md")
+    end
+
+    Rake::Task["release:source_control_push"].invoke
+  end
+end
+
 JAVA_DIR            = "java/src/json/ext"
 JAVA_RAGEL_PATH     = "#{JAVA_DIR}/ParserConfig.rl"
 JAVA_PARSER_SRC     = "#{JAVA_DIR}/ParserConfig.java"
