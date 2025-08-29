@@ -102,4 +102,9 @@ jobs:
           ruby-version: "3.4"
           bundler-cache: true
 
+      - name: Setup Git
+        run: |
+          git config --global user.email "$(git log -1 --pretty=format:'%ae')"
+          git config --global user.name "$(git log -1 --pretty=format:'%an')"
+
       - run: bundle exec rake ci:check_release
