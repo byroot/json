@@ -6,3 +6,10 @@
 All the files in this distribution are covered under either the Ruby's
 license (see the file COPYING) or public-domain except some files
 mentioned below.
+
+ext/json/ext/parser/ryu_json.h::
+ext/json/ext/parser/ryu_table.h::
+  These files are adapted from the Ryu algorithm by Ulf Adams.
+  They are dual-licensed under Apache License 2.0 OR Boost Software License 1.0.
+  See ext/json/ext/parser/LICENSE-Apache2 and ext/json/ext/parser/LICENSE-Boost
+  for the full license texts.

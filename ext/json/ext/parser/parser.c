@@ -1,6 +1,9 @@
 #include "ruby.h"
 #include "ruby/encoding.h"
 
+// Minimal vendored Ryu float parser optimized for JSON parsing
+#include "ryu_json.h"
+
 /* shims */
 /* This is the fallback definition from Ruby 3.4 */
 
@@ -808,6 +811,38 @@ static VALUE json_decode_large_float(const char *start, long len)
     return number;
 }
 
+/* Helper: Parse float from string slice using rb_cstr_to_dbl
+ * Handles small strings efficiently with stack buffer
+ */
+static inline VALUE json_decode_float_slice(const char *start, long len)
+{
+    if (RB_LIKELY(len < 64)) {
+        char buffer[64];
+        MEMCPY(buffer, start, char, len);
+        buffer[len] = '\0';
+        return DBL2NUM(rb_cstr_to_dbl(buffer, 1));
+    } else {
+        return json_decode_large_float(start, len);
+    }
+}
+
+/* Ruby JSON optimized float decoder using vendored Ryu algorithm
+ * Accepts pre-extracted mantissa and exponent from first-pass validation
+ */
+static inline VALUE json_ryu_parse_float(uint64_t m10, int m10digits, int32_t e10, bool signedM,
+                                          const char *start, const char *end)
+{
+    // Fall back to rb_cstr_to_dbl for potential subnormals (rare edge case)
+    // Ryu has rounding issues with subnormals around 1e-310 (< 2.225e-308)
+    if (m10digits + e10 < -307) {
+        // Use original string directly via shared helper
+        return json_decode_float_slice(start, end - start);
+    }
+
+    double result = ryu_s2d_from_parts(m10, m10digits, e10, signedM);
+    return DBL2NUM(result);
+}
+
 static VALUE json_decode_float(JSON_ParserConfig *config, const char *start, const char *end)
 {
     long len = end - start;
@@ -815,13 +850,8 @@ static VALUE json_decode_float(JSON_ParserConfig *config, const char *start, con
     if (RB_UNLIKELY(config->decimal_class)) {
         VALUE text = rb_str_new(start, len);
         return rb_funcallv(config->decimal_class, config->decimal_method_id, 1, &text);
-    } else if (RB_LIKELY(len < 64)) {
-        char buffer[64];
-        MEMCPY(buffer, start, char, len);
-        buffer[len] = '\0';
-        return DBL2NUM(rb_cstr_to_dbl(buffer, 1));
     } else {
-        return json_decode_large_float(start, len);
+        return json_decode_float_slice(start, len);
     }
 }
 
@@ -1082,26 +1112,47 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
             bool integer = true;
 
+            // Variables for Ryu optimization - extract digits during parsing
+            uint64_t m10 = 0;
+            int m10digits = 0;
+            int32_t e10 = 0;
+            bool signedM = false;
+            int decimal_point_pos = -1;
+
             // /\A-?(0|[1-9]\d*)(\.\d+)?([Ee][-+]?\d+)?/
             const char *start = state->cursor;
-            state->cursor++;
 
+            // Handle optional negative sign
+            if (*state->cursor == '-') {
+                signedM = true;
+                state->cursor++;
+                if (state->cursor >= state->end || *state->cursor < '0' || *state->cursor > '9') {
+                    raise_parse_error_at("invalid number: %s", state, start);
+                }
+            }
+
+            // Parse integer part and extract mantissa digits
             while ((state->cursor < state->end) && (*state->cursor >= '0') && (*state->cursor <= '9')) {
+                if (m10digits < 17) {  // Only keep first 17 significant digits
+                    m10 = m10 * 10 + (*state->cursor - '0');
+                }
+                m10digits++;
                 state->cursor++;
             }
 
             long integer_length = state->cursor - start;
+            if (signedM) integer_length--;  // Don't count the sign
 
             if (RB_UNLIKELY(start[0] == '0' && integer_length > 1)) {
                 raise_parse_error_at("invalid number: %s", state, start);
-            } else if (RB_UNLIKELY(integer_length > 2 && start[0] == '-' && start[1] == '0')) {
-                raise_parse_error_at("invalid number: %s", state, start);
-            } else if (RB_UNLIKELY(integer_length == 1 && start[0] == '-')) {
+            } else if (RB_UNLIKELY(integer_length > 1 && signedM && start[1] == '0')) {
                 raise_parse_error_at("invalid number: %s", state, start);
             }
 
+            // Parse fractional part
             if ((state->cursor < state->end) && (*state->cursor == '.')) {
                 integer = false;
+                decimal_point_pos = m10digits;  // Remember position of decimal point
                 state->cursor++;
 
                 if (state->cursor == state->end || *state->cursor < '0' || *state->cursor > '9') {
@@ -1109,14 +1160,22 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
                 }
 
                 while ((state->cursor < state->end) && (*state->cursor >= '0') && (*state->cursor <= '9')) {
+                    if (m10digits < 17) {  // Only keep first 17 significant digits
+                        m10 = m10 * 10 + (*state->cursor - '0');
+                    }
+                    m10digits++;
                     state->cursor++;
                 }
             }
 
+            // Parse exponent
             if ((state->cursor < state->end) && ((*state->cursor == 'e') || (*state->cursor == 'E'))) {
                 integer = false;
                 state->cursor++;
+
+                bool exp_signed = false;
                 if ((state->cursor < state->end) && ((*state->cursor == '+') || (*state->cursor == '-'))) {
+                    exp_signed = (*state->cursor == '-');
                     state->cursor++;
                 }
 
@@ -1124,14 +1183,35 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
                     raise_parse_error("invalid number: %s", state);
                 }
 
+                int32_t exp_value = 0;
                 while ((state->cursor < state->end) && (*state->cursor >= '0') && (*state->cursor <= '9')) {
+                    exp_value = exp_value * 10 + (*state->cursor - '0');
                     state->cursor++;
                 }
+
+                e10 = exp_signed ? -exp_value : exp_value;
             }
 
             if (integer) {
                 return json_push_value(state, config, json_decode_integer(start, state->cursor));
             }
+
+            // Adjust exponent based on decimal point position
+            if (decimal_point_pos >= 0) {
+                e10 -= (m10digits - decimal_point_pos);
+            }
+
+            // Check for sign
+            if (start[0] == '-') {
+                signedM = true;
+            }
+
+            // Use optimized Ryu path if we have a valid mantissa
+            if (m10digits > 0 && m10digits <= 17 && !config->decimal_class) {
+                return json_push_value(state, config, json_ryu_parse_float(m10, m10digits, e10, signedM, start, state->cursor));
+            }
+
+            // Fallback to standard path for edge cases
             return json_push_value(state, config, json_decode_float(config, start, state->cursor));
         }
         case '"': {
