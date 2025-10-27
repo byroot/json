@@ -1,7 +1,5 @@
 #include "ruby.h"
 #include "ruby/encoding.h"
-
-// Minimal vendored Ryu float parser optimized for JSON parsing
 #include "../vendor/ryu.h"
 
 /* shims */
