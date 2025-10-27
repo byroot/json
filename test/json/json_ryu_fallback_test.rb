@@ -26,7 +26,7 @@ class JSONRyuFallbackTest < Test::Unit::TestCase
     ]
 
     test_cases.each do |input, expected|
-      result = JSON.parse("[#{input}]")[0]
+      result = JSON.parse(input)
       assert_in_delta(expected, result, 1e-10,
         "Failed to parse #{input} correctly (>17 digits, fallback path)")
     end
@@ -37,12 +37,12 @@ class JSONRyuFallbackTest < Test::Unit::TestCase
     input = "3.141"
 
     # Without decimal_class: uses Ryu, returns Float
-    result_float = JSON.parse("[#{input}]")[0]
+    result_float = JSON.parse(input)
     assert_instance_of(Float, result_float)
     assert_equal(3.141, result_float)
 
     # With decimal_class: uses fallback, returns BigDecimal
-    result_bigdecimal = JSON.parse("[#{input}]", decimal_class: BigDecimal)[0]
+    result_bigdecimal = JSON.parse(input, decimal_class: BigDecimal)
     assert_instance_of(BigDecimal, result_bigdecimal)
     assert_equal(BigDecimal("3.141"), result_bigdecimal)
   end if defined?(::BigDecimal)
@@ -62,7 +62,7 @@ class JSONRyuFallbackTest < Test::Unit::TestCase
     ]
 
     test_cases.each do |input, expected|
-      result = JSON.parse("[#{input}]")[0]
+      result = JSON.parse(input)
       assert_in_delta(expected, result, expected.abs * 1e-15,
         "Failed to parse #{input} correctly (<=17 digits, Ryu path)")
     end
@@ -72,12 +72,12 @@ class JSONRyuFallbackTest < Test::Unit::TestCase
   def test_seventeen_digit_boundary
     # Exactly 17 significant digits should use Ryu
     input_17 = "12345678901234567.0"  # Force it to be a float with .0
-    result = JSON.parse("[#{input_17}]")[0]
+    result = JSON.parse(input_17)
     assert_in_delta(12345678901234567.0, result, 1e-10)
 
     # 18 significant digits should use fallback
     input_18 = "123456789012345678.0"
-    result = JSON.parse("[#{input_18}]")[0]
+    result = JSON.parse(input_18)
     # Note: This will be rounded to double precision
     assert_in_delta(123456789012345680.0, result, 1e-10)
   end
@@ -90,7 +90,7 @@ class JSONRyuFallbackTest < Test::Unit::TestCase
     ]
 
     test_cases.each do |input, expected|
-      result = JSON.parse("[#{input}]")[0]
+      result = JSON.parse(input)
       assert_in_delta(expected, result, expected.abs * 1e-10,
         "Failed to parse #{input} correctly")
     end
@@ -104,17 +104,17 @@ class JSONRyuFallbackTest < Test::Unit::TestCase
     ]
 
     test_cases.each do |input, expected|
-      result = JSON.parse("[#{input}]")[0]
+      result = JSON.parse(input)
       assert_in_delta(expected, result, expected.abs * 1e-10,
         "Failed to parse #{input} correctly")
     end
 
     # Test zero separately
-    result_pos_zero = JSON.parse("[0.0]")[0]
+    result_pos_zero = JSON.parse("0.0")
     assert_equal(0.0, result_pos_zero)
 
     # Note: JSON.parse doesn't preserve -0.0 vs +0.0 distinction in standard mode
-    result_neg_zero = JSON.parse("[-0.0]")[0]
+    result_neg_zero = JSON.parse("-0.0")
     assert_equal(0.0, result_neg_zero.abs)
   end
 
@@ -132,10 +132,10 @@ class JSONRyuFallbackTest < Test::Unit::TestCase
 
     test_cases.each do |input|
       # Parse the number
-      result = JSON.parse("[#{input}]")[0]
+      result = JSON.parse(input)
 
       # Re-parse to verify round-trip
-      result2 = JSON.parse("[#{input}]")[0]
+      result2 = JSON.parse(result.to_s)
 
       # Should be bit-identical
       assert_equal(result, result2,
@@ -161,7 +161,7 @@ class JSONRyuFallbackTest < Test::Unit::TestCase
 
     invalid_cases.each do |input|
       assert_raise(JSON::ParserError, "Should reject invalid number: #{input}") do
-        JSON.parse("[#{input}]")
+        JSON.parse(input)
       end
     end
   end
