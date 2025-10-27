@@ -1199,11 +1199,6 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
                 e10 -= (m10digits - decimal_point_pos);
             }
 
-            // Check for sign
-            if (start[0] == '-') {
-                signedM = true;
-            }
-
             // Use optimized Ryu path if we have a valid mantissa
             if (m10digits > 0 && m10digits <= 17 && !config->decimal_class) {
                 return json_push_value(state, config, json_ryu_parse_float(m10, m10digits, e10, signedM, start, state->cursor));
