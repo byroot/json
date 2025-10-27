@@ -57,8 +57,4 @@ JSON
 benchmark_parsing "activitypub.json", File.read("#{__dir__}/data/activitypub.json")
 benchmark_parsing "twitter.json", File.read("#{__dir__}/data/twitter.json")
 benchmark_parsing "citm_catalog.json", File.read("#{__dir__}/data/citm_catalog.json")
-
-# We now vendor Ryu (https://github.com/ulfjack/ryu), a state-of-the-art float parser
-# implemented in pure C. This gives us the same performance as rapidjson's C++ float parser,
-# achieving within-error-margin parity on float-heavy workloads like canada.json.
 benchmark_parsing "float parsing", File.read("#{__dir__}/data/canada.json")

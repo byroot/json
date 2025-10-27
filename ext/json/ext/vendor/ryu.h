@@ -3,7 +3,7 @@
 // The contents of this file may be used under the terms of the Apache License,
 // Version 2.0.
 //
-//    (See accompanying file LICENSE-Apache or copy at
+//    (See accompanying file LICENSE-Apache2 or copy at
 //     http://www.apache.org/licenses/LICENSE-2.0)
 //
 // Alternatively, the contents of this file may be used under the terms of
@@ -14,8 +14,283 @@
 // Unless required by applicable law or agreed to in writing, this software
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 // KIND, either express or implied.
-#ifndef RYU_D2S_FULL_TABLE_H
-#define RYU_D2S_FULL_TABLE_H
+//
+// ---
+//
+//                               Apache License
+//                         Version 2.0, January 2004
+//                      http://www.apache.org/licenses/
+//
+// TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+//
+// 1. Definitions.
+//
+//    "License" shall mean the terms and conditions for use, reproduction,
+//    and distribution as defined by Sections 1 through 9 of this document.
+//
+//    "Licensor" shall mean the copyright owner or entity authorized by
+//    the copyright owner that is granting the License.
+//
+//    "Legal Entity" shall mean the union of the acting entity and all
+//    other entities that control, are controlled by, or are under common
+//    control with that entity. For the purposes of this definition,
+//    "control" means (i) the power, direct or indirect, to cause the
+//    direction or management of such entity, whether by contract or
+//    otherwise, or (ii) ownership of fifty percent (50%) or more of the
+//    outstanding shares, or (iii) beneficial ownership of such entity.
+//
+//    "You" (or "Your") shall mean an individual or Legal Entity
+//    exercising permissions granted by this License.
+//
+//    "Source" form shall mean the preferred form for making modifications,
+//    including but not limited to software source code, documentation
+//    source, and configuration files.
+//
+//    "Object" form shall mean any form resulting from mechanical
+//    transformation or translation of a Source form, including but
+//    not limited to compiled object code, generated documentation,
+//    and conversions to other media types.
+//
+//    "Work" shall mean the work of authorship, whether in Source or
+//    Object form, made available under the License, as indicated by a
+//    copyright notice that is included in or attached to the work
+//    (an example is provided in the Appendix below).
+//
+//    "Derivative Works" shall mean any work, whether in Source or Object
+//    form, that is based on (or derived from) the Work and for which the
+//    editorial revisions, annotations, elaborations, or other modifications
+//    represent, as a whole, an original work of authorship. For the purposes
+//    of this License, Derivative Works shall not include works that remain
+//    separable from, or merely link (or bind by name) to the interfaces of,
+//    the Work and Derivative Works thereof.
+//
+//    "Contribution" shall mean any work of authorship, including
+//    the original version of the Work and any modifications or additions
+//    to that Work or Derivative Works thereof, that is intentionally
+//    submitted to Licensor for inclusion in the Work by the copyright owner
+//    or by an individual or Legal Entity authorized to submit on behalf of
+//    the copyright owner. For the purposes of this definition, "submitted"
+//    means any form of electronic, verbal, or written communication sent
+//    to the Licensor or its representatives, including but not limited to
+//    communication on electronic mailing lists, source code control systems,
+//    and issue tracking systems that are managed by, or on behalf of, the
+//    Licensor for the purpose of discussing and improving the Work, but
+//    excluding communication that is conspicuously marked or otherwise
+//    designated in writing by the copyright owner as "Not a Contribution."
+//
+//    "Contributor" shall mean Licensor and any individual or Legal Entity
+//    on behalf of whom a Contribution has been received by Licensor and
+//    subsequently incorporated within the Work.
+//
+// 2. Grant of Copyright License. Subject to the terms and conditions of
+//    this License, each Contributor hereby grants to You a perpetual,
+//    worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+//    copyright license to reproduce, prepare Derivative Works of,
+//    publicly display, publicly perform, sublicense, and distribute the
+//    Work and such Derivative Works in Source or Object form.
+//
+// 3. Grant of Patent License. Subject to the terms and conditions of
+//    this License, each Contributor hereby grants to You a perpetual,
+//    worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+//    (except as stated in this section) patent license to make, have made,
+//    use, offer to sell, sell, import, and otherwise transfer the Work,
+//    where such license applies only to those patent claims licensable
+//    by such Contributor that are necessarily infringed by their
+//    Contribution(s) alone or by combination of their Contribution(s)
+//    with the Work to which such Contribution(s) was submitted. If You
+//    institute patent litigation against any entity (including a
+//    cross-claim or counterclaim in a lawsuit) alleging that the Work
+//    or a Contribution incorporated within the Work constitutes direct
+//    or contributory patent infringement, then any patent licenses
+//    granted to You under this License for that Work shall terminate
+//    as of the date such litigation is filed.
+//
+// 4. Redistribution. You may reproduce and distribute copies of the
+//    Work or Derivative Works thereof in any medium, with or without
+//    modifications, and in Source or Object form, provided that You
+//    meet the following conditions:
+//
+//    (a) You must give any other recipients of the Work or
+//        Derivative Works a copy of this License; and
+//
+//    (b) You must cause any modified files to carry prominent notices
+//        stating that You changed the files; and
+//
+//    (c) You must retain, in the Source form of any Derivative Works
+//        that You distribute, all copyright, patent, trademark, and
+//        attribution notices from the Source form of the Work,
+//        excluding those notices that do not pertain to any part of
+//        the Derivative Works; and
+//
+//    (d) If the Work includes a "NOTICE" text file as part of its
+//        distribution, then any Derivative Works that You distribute must
+//        include a readable copy of the attribution notices contained
+//        within such NOTICE file, excluding those notices that do not
+//        pertain to any part of the Derivative Works, in at least one
+//        of the following places: within a NOTICE text file distributed
+//        as part of the Derivative Works; within the Source form or
+//        documentation, if provided along with the Derivative Works; or,
+//        within a display generated by the Derivative Works, if and
+//        wherever such third-party notices normally appear. The contents
+//        of the NOTICE file are for informational purposes only and
+//        do not modify the License. You may add Your own attribution
+//        notices within Derivative Works that You distribute, alongside
+//        or as an addendum to the NOTICE text from the Work, provided
+//        that such additional attribution notices cannot be construed
+//        as modifying the License.
+//
+//    You may add Your own copyright statement to Your modifications and
+//    may provide additional or different license terms and conditions
+//    for use, reproduction, or distribution of Your modifications, or
+//    for any such Derivative Works as a whole, provided Your use,
+//    reproduction, and distribution of the Work otherwise complies with
+//    the conditions stated in this License.
+//
+// 5. Submission of Contributions. Unless You explicitly state otherwise,
+//    any Contribution intentionally submitted for inclusion in the Work
+//    by You to the Licensor shall be under the terms and conditions of
+//    this License, without any additional terms or conditions.
+//    Notwithstanding the above, nothing herein shall supersede or modify
+//    the terms of any separate license agreement you may have executed
+//    with Licensor regarding such Contributions.
+//
+// 6. Trademarks. This License does not grant permission to use the trade
+//    names, trademarks, service marks, or product names of the Licensor,
+//    except as required for reasonable and customary use in describing the
+//    origin of the Work and reproducing the content of the NOTICE file.
+//
+// 7. Disclaimer of Warranty. Unless required by applicable law or
+//    agreed to in writing, Licensor provides the Work (and each
+//    Contributor provides its Contributions) on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+//    implied, including, without limitation, any warranties or conditions
+//    of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+//    PARTICULAR PURPOSE. You are solely responsible for determining the
+//    appropriateness of using or redistributing the Work and assume any
+//    risks associated with Your exercise of permissions under this License.
+//
+// 8. Limitation of Liability. In no event and under no legal theory,
+//    whether in tort (including negligence), contract, or otherwise,
+//    unless required by applicable law (such as deliberate and grossly
+//    negligent acts) or agreed to in writing, shall any Contributor be
+//    liable to You for damages, including any direct, indirect, special,
+//    incidental, or consequential damages of any character arising as a
+//    result of this License or out of the use or inability to use the
+//    Work (including but not limited to damages for loss of goodwill,
+//    work stoppage, computer failure or malfunction, or any and all
+//    other commercial damages or losses), even if such Contributor
+//    has been advised of the possibility of such damages.
+//
+// 9. Accepting Warranty or Additional Liability. While redistributing
+//    the Work or Derivative Works thereof, You may choose to offer,
+//    and charge a fee for, acceptance of support, warranty, indemnity,
+//    or other liability obligations and/or rights consistent with this
+//    License. However, in accepting such obligations, You may act only
+//    on Your own behalf and on Your sole responsibility, not on behalf
+//    of any other Contributor, and only if You agree to indemnify,
+//    defend, and hold each Contributor harmless for any liability
+//    incurred by, or claims asserted against, such Contributor by reason
+//    of your accepting any such warranty or additional liability.
+//
+// END OF TERMS AND CONDITIONS
+//
+// APPENDIX: How to apply the Apache License to your work.
+//
+//    To apply the Apache License to your work, attach the following
+//    boilerplate notice, with the fields enclosed by brackets "[]"
+//    replaced with your own identifying information. (Don't include
+//    the brackets!)  The text should be enclosed in the appropriate
+//    comment syntax for the file format. We also recommend that a
+//    file or class name and description of purpose be included on the
+//    same "printed page" as the copyright notice for easier
+//    identification within third-party archives.
+//
+// Copyright [yyyy] [name of copyright owner]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// ---
+//
+// Boost Software License - Version 1.0 - August 17th, 2003
+//
+// Permission is hereby granted, free of charge, to any person or organization
+// obtaining a copy of the software and accompanying documentation covered by
+// this license (the "Software") to use, reproduce, display, distribute,
+// execute, and transmit the Software, and to prepare derivative works of the
+// Software, and to permit third-parties to whom the Software is furnished to
+// do so, all subject to the following:
+//
+// The copyright notices in the Software and this entire statement, including
+// the above license grant, this restriction and the following disclaimer,
+// must be included in all copies of the Software, in whole or in part, and
+// all derivative works of the Software, unless such copies or derivative
+// works are solely in the form of machine-executable object code generated by
+// a source language processor.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
+// SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
+// FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
+// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+//
+// ---
+// Minimal Ryu implementation adapted for Ruby JSON gem by Josef Šimánek
+// Optimized for pre-extracted mantissa/exponent from JSON parsing
+// This is a stripped-down version containing only what's needed for
+// converting decimal mantissa+exponent to IEEE 754 double precision.
+
+#ifndef RYU_H
+#define RYU_H
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+
+// Detect __builtin_clzll availability (for floor_log2)
+// Note: MSVC doesn't have __builtin_clzll, so we provide a fallback
+#ifdef __clang__
+  #if __has_builtin(__builtin_clzll)
+    #define RYU_HAVE_BUILTIN_CLZLL 1
+  #else
+    #define RYU_HAVE_BUILTIN_CLZLL 0
+  #endif
+#elif defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))
+  #define RYU_HAVE_BUILTIN_CLZLL 1
+#else
+  #define RYU_HAVE_BUILTIN_CLZLL 0
+#endif
+
+// Count leading zeros (for floor_log2)
+static inline uint32_t ryu_leading_zeros64(uint64_t input)
+{
+#if RYU_HAVE_BUILTIN_CLZLL
+  return __builtin_clzll(input);
+#else
+  // Fallback: binary search for the highest set bit
+  // This works on MSVC and other compilers without __builtin_clzll
+  if (input == 0) return 64;
+  uint32_t n = 0;
+  if (input <= 0x00000000FFFFFFFFULL) { n += 32; input <<= 32; }
+  if (input <= 0x0000FFFFFFFFFFFFULL) { n += 16; input <<= 16; }
+  if (input <= 0x00FFFFFFFFFFFFFFULL) { n +=  8; input <<=  8; }
+  if (input <= 0x0FFFFFFFFFFFFFFFULL) { n +=  4; input <<=  4; }
+  if (input <= 0x3FFFFFFFFFFFFFFFULL) { n +=  2; input <<=  2; }
+  if (input <= 0x7FFFFFFFFFFFFFFFULL) { n +=  1; }
+  return n;
+#endif
+}
 
 // These tables are generated by PrintDoubleLookupTable.
 #define DOUBLE_POW5_INV_BITCOUNT 125
@@ -364,4 +639,186 @@ static const uint64_t DOUBLE_POW5_SPLIT[DOUBLE_POW5_TABLE_SIZE][2] = {
   {  3278889188817135834u, 1424047269444608885u }, {  8710297504448807696u, 1780059086805761106u }
 };
 
-#endif // RYU_D2S_FULL_TABLE_H
+// IEEE 754 double precision constants
+#define DOUBLE_MANTISSA_BITS 52
+#define DOUBLE_EXPONENT_BITS 11
+#define DOUBLE_EXPONENT_BIAS 1023
+
+// Helper: floor(log2(value)) using ryu_leading_zeros64
+static inline uint32_t floor_log2(const uint64_t value) {
+  return 63 - ryu_leading_zeros64(value);
+}
+
+// Helper: log2(5^e) approximation
+static inline int32_t log2pow5(const int32_t e) {
+  return (int32_t) ((((uint32_t) e) * 1217359) >> 19);
+}
+
+// Helper: ceil(log2(5^e))
+static inline int32_t ceil_log2pow5(const int32_t e) {
+  return log2pow5(e) + 1;
+}
+
+// Helper: max of two int32
+static inline int32_t max32(int32_t a, int32_t b) {
+  return a < b ? b : a;
+}
+
+// Helper: convert uint64 bits to double
+static inline double int64Bits2Double(uint64_t bits) {
+  double f;
+  memcpy(&f, &bits, sizeof(double));
+  return f;
+}
+
+// Check if value is multiple of 2^p
+static inline bool multipleOfPowerOf2(const uint64_t value, const uint32_t p) {
+  return (value & ((1ull << p) - 1)) == 0;
+}
+
+// Count how many times value is divisible by 5
+// Uses modular inverse to avoid expensive division
+static inline uint32_t pow5Factor(uint64_t value) {
+  const uint64_t m_inv_5 = 14757395258967641293u; // 5 * m_inv_5 = 1 (mod 2^64)
+  const uint64_t n_div_5 = 3689348814741910323u;  // 2^64 / 5
+  uint32_t count = 0;
+  for (;;) {
+    value *= m_inv_5;
+    if (value > n_div_5)
+      break;
+    ++count;
+  }
+  return count;
+}
+
+// Check if value is multiple of 5^p
+// Optimized: uses modular inverse instead of division
+static inline bool multipleOfPowerOf5(const uint64_t value, const uint32_t p) {
+  return pow5Factor(value) >= p;
+}
+
+// 128-bit multiplication with shift
+// This is the core operation for converting decimal to binary
+#if defined(__SIZEOF_INT128__)
+// Use native 128-bit integers if available (GCC/Clang)
+static inline uint64_t mulShift64(const uint64_t m, const uint64_t* const mul, const int32_t j) {
+  const unsigned __int128 b0 = ((unsigned __int128) m) * mul[0];
+  const unsigned __int128 b2 = ((unsigned __int128) m) * mul[1];
+  return (uint64_t) (((b0 >> 64) + b2) >> (j - 64));
+}
+#else
+// Fallback for systems without 128-bit integers
+static inline uint64_t umul128(const uint64_t a, const uint64_t b, uint64_t* const productHi) {
+  const uint32_t aLo = (uint32_t)a;
+  const uint32_t aHi = (uint32_t)(a >> 32);
+  const uint32_t bLo = (uint32_t)b;
+  const uint32_t bHi = (uint32_t)(b >> 32);
+
+  const uint64_t b00 = (uint64_t)aLo * bLo;
+  const uint64_t b01 = (uint64_t)aLo * bHi;
+  const uint64_t b10 = (uint64_t)aHi * bLo;
+  const uint64_t b11 = (uint64_t)aHi * bHi;
+
+  const uint32_t b00Lo = (uint32_t)b00;
+  const uint32_t b00Hi = (uint32_t)(b00 >> 32);
+
+  const uint64_t mid1 = b10 + b00Hi;
+  const uint32_t mid1Lo = (uint32_t)(mid1);
+  const uint32_t mid1Hi = (uint32_t)(mid1 >> 32);
+
+  const uint64_t mid2 = b01 + mid1Lo;
+  const uint32_t mid2Lo = (uint32_t)(mid2);
+  const uint32_t mid2Hi = (uint32_t)(mid2 >> 32);
+
+  const uint64_t pHi = b11 + mid1Hi + mid2Hi;
+  const uint64_t pLo = ((uint64_t)mid2Lo << 32) | b00Lo;
+
+  *productHi = pHi;
+  return pLo;
+}
+
+static inline uint64_t shiftright128(const uint64_t lo, const uint64_t hi, const uint32_t dist) {
+  return (hi << (64 - dist)) | (lo >> dist);
+}
+
+static inline uint64_t mulShift64(const uint64_t m, const uint64_t* const mul, const int32_t j) {
+  uint64_t high1;
+  const uint64_t low1 = umul128(m, mul[1], &high1);
+  uint64_t high0;
+  umul128(m, mul[0], &high0);
+  const uint64_t sum = high0 + low1;
+  if (sum < high0) {
+    ++high1;
+  }
+  return shiftright128(sum, high1, j - 64);
+}
+#endif
+
+// Main conversion function: decimal mantissa+exponent to IEEE 754 double
+// Optimized for JSON parsing with fast paths for edge cases
+static inline double ryu_s2d_from_parts(uint64_t m10, int m10digits, int32_t e10, bool signedM) {
+  // Fast path: handle zero explicitly (e.g., "0.0", "0e0")
+  if (m10 == 0) {
+    return int64Bits2Double(((uint64_t) signedM) << 63);
+  }
+
+  // Fast path: handle overflow/underflow early
+  if (m10digits + e10 <= -324) {
+    // Underflow to zero
+    return int64Bits2Double(((uint64_t) signedM) << 63);
+  }
+
+  if (m10digits + e10 >= 310) {
+    // Overflow to infinity
+    return int64Bits2Double((((uint64_t) signedM) << 63) | 0x7ff0000000000000ULL);
+  }
+
+  // Convert decimal to binary: m10 * 10^e10 = m2 * 2^e2
+  int32_t e2;
+  uint64_t m2;
+  bool trailingZeros;
+
+  if (e10 >= 0) {
+    // Positive exponent: multiply by 5^e10 and adjust binary exponent
+    e2 = floor_log2(m10) + e10 + log2pow5(e10) - (DOUBLE_MANTISSA_BITS + 1);
+    int j = e2 - e10 - ceil_log2pow5(e10) + DOUBLE_POW5_BITCOUNT;
+    m2 = mulShift64(m10, DOUBLE_POW5_SPLIT[e10], j);
+    trailingZeros = e2 < e10 || (e2 - e10 < 64 && multipleOfPowerOf2(m10, e2 - e10));
+  } else {
+    // Negative exponent: divide by 5^(-e10)
+    e2 = floor_log2(m10) + e10 - ceil_log2pow5(-e10) - (DOUBLE_MANTISSA_BITS + 1);
+    int j = e2 - e10 + ceil_log2pow5(-e10) - 1 + DOUBLE_POW5_INV_BITCOUNT;
+    m2 = mulShift64(m10, DOUBLE_POW5_INV_SPLIT[-e10], j);
+    trailingZeros = multipleOfPowerOf5(m10, -e10);
+  }
+
+  // Compute IEEE 754 exponent
+  uint32_t ieee_e2 = (uint32_t) max32(0, e2 + DOUBLE_EXPONENT_BIAS + floor_log2(m2));
+
+  if (ieee_e2 > 0x7fe) {
+    // Overflow to infinity
+    return int64Bits2Double((((uint64_t) signedM) << 63) | 0x7ff0000000000000ULL);
+  }
+
+  // Compute shift amount for rounding
+  int32_t shift = (ieee_e2 == 0 ? 1 : ieee_e2) - e2 - DOUBLE_EXPONENT_BIAS - DOUBLE_MANTISSA_BITS;
+
+  // IEEE 754 round-to-even (banker's rounding)
+  trailingZeros &= (m2 & ((1ull << (shift - 1)) - 1)) == 0;
+  uint64_t lastRemovedBit = (m2 >> (shift - 1)) & 1;
+  bool roundUp = (lastRemovedBit != 0) && (!trailingZeros || (((m2 >> shift) & 1) != 0));
+
+  uint64_t ieee_m2 = (m2 >> shift) + roundUp;
+  ieee_m2 &= (1ull << DOUBLE_MANTISSA_BITS) - 1;
+
+  if (ieee_m2 == 0 && roundUp) {
+    ieee_e2++;
+  }
+
+  // Pack sign, exponent, and mantissa into IEEE 754 format
+  // Match original Ryu: group sign+exponent, then shift and add mantissa
+  uint64_t ieee = (((((uint64_t) signedM) << DOUBLE_EXPONENT_BITS) | (uint64_t)ieee_e2) << DOUBLE_MANTISSA_BITS) | ieee_m2;
+  return int64Bits2Double(ieee);
+}
+
+#endif // RYU_H

@@ -2,7 +2,7 @@
 #include "ruby/encoding.h"
 
 // Minimal vendored Ryu float parser optimized for JSON parsing
-#include "ryu_json.h"
+#include "../vendor/ryu.h"
 
 /* shims */
 /* This is the fallback definition from Ruby 3.4 */

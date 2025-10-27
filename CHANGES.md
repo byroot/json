@@ -2,6 +2,8 @@
 
 ### Unreleased
 
+* Optimized floating point number parsing by integrating the ryu algorithm.
+
 ### 2025-10-25 (2.15.2)
 
 * Fix `JSON::Coder` to have one dedicated depth counter per invocation.
