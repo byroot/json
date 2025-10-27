@@ -1124,13 +1124,13 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
             if (*state->cursor == '-') {
                 signedM = true;
                 state->cursor++;
-                if (state->cursor >= state->end || *state->cursor < '0' || *state->cursor > '9') {
+                if (state->cursor >= state->end || !rb_isdigit(*state->cursor)) {
                     raise_parse_error_at("invalid number: %s", state, start);
                 }
             }
 
             // Parse integer part and extract mantissa digits
-            while ((state->cursor < state->end) && (*state->cursor >= '0') && (*state->cursor <= '9')) {
+            while ((state->cursor < state->end) && rb_isdigit(*state->cursor)) {
                 if (m10digits < 17) {  // Only keep first 17 significant digits
                     m10 = m10 * 10 + (*state->cursor - '0');
                 }
@@ -1153,11 +1153,11 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
                 decimal_point_pos = m10digits;  // Remember position of decimal point
                 state->cursor++;
 
-                if (state->cursor == state->end || *state->cursor < '0' || *state->cursor > '9') {
+                if (state->cursor == state->end || !rb_isdigit(*state->cursor)) {
                     raise_parse_error("invalid number: %s", state);
                 }
 
-                while ((state->cursor < state->end) && (*state->cursor >= '0') && (*state->cursor <= '9')) {
+                while ((state->cursor < state->end) && rb_isdigit(*state->cursor)) {
                     if (m10digits < 17) {  // Only keep first 17 significant digits
                         m10 = m10 * 10 + (*state->cursor - '0');
                     }
@@ -1177,12 +1177,12 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
                     state->cursor++;
                 }
 
-                if (state->cursor == state->end || *state->cursor < '0' || *state->cursor > '9') {
+                if (state->cursor == state->end || !rb_isdigit(*state->cursor)) {
                     raise_parse_error("invalid number: %s", state);
                 }
 
                 int32_t exp_value = 0;
-                while ((state->cursor < state->end) && (*state->cursor >= '0') && (*state->cursor <= '9')) {
+                while ((state->cursor < state->end) && rb_isdigit(*state->cursor)) {
                     exp_value = exp_value * 10 + (*state->cursor - '0');
                     state->cursor++;
                 }
