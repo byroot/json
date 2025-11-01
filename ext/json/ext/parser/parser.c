@@ -608,17 +608,24 @@ static inline void
 json_eat_whitespace(JSON_ParserState *state)
 {
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    // Heuristic: if we see a newline, there may be consecutive of spaces after it.
-    if (RB_UNLIKELY(state->cursor < state->end && *state->cursor == '\n')) {
+    // Heuristic: if we see a newline, there is likely consecutive spaces after it.
+    if (peek(state) == '\n') {
         state->cursor++;
 
-        while (state->cursor+sizeof(uint64_t) <= state->end) {
+        while (rest(state) > 8) {
             uint64_t chunk;
             memcpy(&chunk, state->cursor, sizeof(uint64_t));
-            if (chunk != 0x2020202020202020) {
-                break;
+            if (chunk == 0x2020202020202020) {
+                state->cursor += sizeof(uint64_t);
+                continue;
             }
-            state->cursor += sizeof(uint64_t);
+
+            if (((uint32_t)chunk) == 0x20202020) {
+                state->cursor += sizeof(uint32_t);
+                continue;
+            }
+
+            break;
         }
     }
 #endif
