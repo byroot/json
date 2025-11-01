@@ -4,8 +4,6 @@ typedef enum {
     SIMD_SSE2
 } SIMD_Implementation;
 
-#ifdef JSON_ENABLE_SIMD
-
 #ifdef __clang__
 # if __has_builtin(__builtin_ctzll)
 #   define HAVE_BUILTIN_CTZLL 1
@@ -47,6 +45,8 @@ static inline int trailing_zeros(int input)
     return trailing_zeros;
 #endif
 }
+
+#ifdef JSON_ENABLE_SIMD
 
 #if (defined(__GNUC__ ) || defined(__clang__))
 #define FORCE_INLINE __attribute__((always_inline))

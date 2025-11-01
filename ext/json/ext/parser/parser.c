@@ -615,17 +615,12 @@ json_eat_whitespace(JSON_ParserState *state)
         while (rest(state) > 8) {
             uint64_t chunk;
             memcpy(&chunk, state->cursor, sizeof(uint64_t));
-            if (chunk == 0x2020202020202020) {
-                state->cursor += sizeof(uint64_t);
-                continue;
-            }
+            size_t consecutive_spaces = trailing_zeros64(chunk ^ 0x2020202020202020) / CHAR_BIT;
 
-            if (((uint32_t)chunk) == 0x20202020) {
-                state->cursor += sizeof(uint32_t);
-                continue;
+            state->cursor += consecutive_spaces;
+            if (consecutive_spaces != 8) {
+                break;
             }
-
-            break;
         }
     }
 #endif
