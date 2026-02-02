@@ -1222,10 +1222,10 @@ json_object_i(VALUE key, VALUE val, VALUE _arg)
             break;
         case T_SYMBOL:
             if (RB_UNLIKELY(arg->first_key_type != T_SYMBOL)) {
-                fprintf(stderr, "\n\nstate->space: ");
+                fprintf(stderr, "\nstate=%p data->state=%p state->space: ", state, data->state);
                 rb_p(state->space);
                 json_inspect_hash_with_mixed_keys(arg);
-                fprintf(stderr, "after: ");
+                fprintf(stderr, "after: state=%p data->state=%p state->space: ", state, data->state);
                 rb_p(state->space);
             }
 
@@ -1536,6 +1536,7 @@ static VALUE cState_partial_generate(VALUE self, VALUE obj, generator_func func,
     };
     fbuffer_stack_init(&buffer, state->buffer_initial_length, stack_buffer, FBUFFER_STACK_SIZE);
 
+    fprintf(stderr, "cState_partial_generate state=%p\n", state);
     struct generate_json_data data = {
         .buffer = &buffer,
         .vstate = Qfalse, // don't use self as it may be frozen and its depth is mutated when calling to_json
