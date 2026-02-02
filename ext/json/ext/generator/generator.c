@@ -1225,16 +1225,17 @@ json_object_i(VALUE key, VALUE val, VALUE _arg)
             break;
         case T_SYMBOL:
             if (RB_UNLIKELY(arg->first_key_type != T_SYMBOL)) {
-                fprintf(stderr, "\nstate=%p data->state=%p state->space: ", state, data->state);
+                fprintf(stderr, "\nstate=%p [-1] = %p, [0] = %p, [1] = %p\n", state, (void *)((size_t *)state)[-1], (void *)((size_t *)state)[0], (void *)((size_t *)state)[1]);
                 if (state->_reserved1) {
                     rb_bug("WAHT before?");
                 }
 
                 json_inspect_hash_with_mixed_keys(arg);
+                fprintf(stderr, "after: tate=%p [-1] = %p, [0] = %p, [1] = %p\n", state, (void *)((size_t *)state)[-1], (void *)((size_t *)state)[0], (void *)((size_t *)state)[1]);
                 if (state->_reserved1) {
                     rb_bug("WAHT after?");
                 }
-                fprintf(stderr, "after: state=%p data->state=%p state->space: ", state, data->state);
+                // fprintf(stderr, "after: state=%p data->state=%p state->space: ", state, data->state);
                 rb_p(state->space);
             }
 
