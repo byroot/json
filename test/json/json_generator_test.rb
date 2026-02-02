@@ -1053,6 +1053,21 @@ class JSONGeneratorTest < Test::Unit::TestCase
     assert_equal %(detected duplicate key "foo" in #{hash.inspect}), error.message
   end
 
+  def test_bug_929_mixed_keys
+    test_data = {
+      "flag" => true,
+      "data" => [],
+      :flag => false,
+    }
+
+    10000.times do
+      test_data["data"] << [
+        1.0
+      ]
+    end
+    test_data.to_json
+  end
+
   def test_frozen
     state = JSON::State.new.freeze
     assert_raise(FrozenError) do

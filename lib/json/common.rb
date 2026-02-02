@@ -188,7 +188,8 @@ module JSON
         key_str = key.to_s
 
         if set[key_str]
-          message = "detected duplicate key #{key_str.inspect} in #{hash.inspect}"
+          hash.inspect
+          message = "detected duplicate key #{key_str.inspect} in #{1}"
           if do_raise
             raise GeneratorError, message
           else
