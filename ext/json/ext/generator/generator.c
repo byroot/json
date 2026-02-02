@@ -1222,7 +1222,11 @@ json_object_i(VALUE key, VALUE val, VALUE _arg)
             break;
         case T_SYMBOL:
             if (RB_UNLIKELY(arg->first_key_type != T_SYMBOL)) {
+                fprintf(stderr, "\n\nstate->space: ");
+                rb_p(state->space);
                 json_inspect_hash_with_mixed_keys(arg);
+                fprintf(stderr, "after: ");
+                rb_p(state->space);
             }
 
             key_to_s = rb_sym2str(key);
