@@ -16,6 +16,8 @@ enum duplicate_key_action {
 };
 
 typedef struct JSON_Generator_StateStruct {
+    VALUE _reserved1;
+    VALUE _reserved2;
     VALUE indent;
     VALUE space;
     VALUE space_before;
@@ -994,6 +996,7 @@ static void vstate_spill(struct generate_json_data *data)
     VALUE vstate = cState_s_allocate(cState);
     GET_STATE(vstate);
     MEMCPY(state, data->state, JSON_Generator_State, 1);
+    fprintf(stderr, "spill state %p\n", state);
     data->state = state;
     data->vstate = vstate;
     RB_OBJ_WRITTEN(vstate, Qundef, state->indent);
@@ -1223,8 +1226,14 @@ json_object_i(VALUE key, VALUE val, VALUE _arg)
         case T_SYMBOL:
             if (RB_UNLIKELY(arg->first_key_type != T_SYMBOL)) {
                 fprintf(stderr, "\nstate=%p data->state=%p state->space: ", state, data->state);
-                rb_p(state->space);
+                if (state->_reserved1) {
+                    rb_bug("WAHT before?");
+                }
+
                 json_inspect_hash_with_mixed_keys(arg);
+                if (state->_reserved1) {
+                    rb_bug("WAHT after?");
+                }
                 fprintf(stderr, "after: state=%p data->state=%p state->space: ", state, data->state);
                 rb_p(state->space);
             }

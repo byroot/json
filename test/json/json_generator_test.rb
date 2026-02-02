@@ -1054,18 +1054,16 @@ class JSONGeneratorTest < Test::Unit::TestCase
   end
 
   def test_bug_929_mixed_keys
+    Warning[:deprecated] = false
     test_data = {
       "flag" => true,
-      "data" => [],
+      "data" => 200.times.map { [1.0] },
       :flag => false,
     }
 
-    10000.times do
-      test_data["data"] << [
-        1.0
-      ]
+    10.times do
+      test_data.to_json
     end
-    test_data.to_json
   end
 
   def test_frozen
