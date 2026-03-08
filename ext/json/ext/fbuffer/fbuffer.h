@@ -161,15 +161,20 @@ static inline void fbuffer_append_reserved_char(FBuffer *fb, char chr)
 
 static void fbuffer_append_str(FBuffer *fb, VALUE str)
 {
+    Check_Type(str, T_STRING);
+
     const char *ptr;
     size_t len;
     RSTRING_GETMEM(str, ptr, len);
 
     fbuffer_append(fb, ptr, len);
+    RB_GC_GUARD(str);
 }
 
 static void fbuffer_append_str_repeat(FBuffer *fb, VALUE str, size_t repeat)
 {
+    Check_Type(str, T_STRING);
+
     const char *ptr;
     size_t len;
     RSTRING_GETMEM(str, ptr, len);
@@ -182,6 +187,7 @@ static void fbuffer_append_str_repeat(FBuffer *fb, VALUE str, size_t repeat)
         fbuffer_append_reserved(fb, ptr, len);
         repeat--;
     }
+    RB_GC_GUARD(str);
 }
 
 static inline void fbuffer_append_char(FBuffer *fb, char newchr)

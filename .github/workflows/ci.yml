@@ -54,6 +54,8 @@ jobs:
 
       - run: bundle exec rake compile ${{ matrix.env }}
 
+      - run: gem install activesupport && bundle exec ruby bug.rb
+
       - run: bundle exec rake test JSON_COMPACT=1 ${{ matrix.env }}
 
       - run: bundle exec rake build
