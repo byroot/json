@@ -1,10 +1,4 @@
-require "bundler/inline"
-
-gemfile do
-  gem "activesupport", "8.1.2"
-  gem "json", "2.19.0"
-end
-
+require 'active_support'
 require 'active_support/core_ext/hash'
 
 large_string = "x" * (35 * 1024 * 1024); nil

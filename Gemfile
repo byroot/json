@@ -16,6 +16,8 @@ group :development do
     # Ref: https://github.com/test-unit/test-unit/pull/329
     gem 'power_assert', '< 3.0.0'
   end
+
+  gem "activesupport", "8.1.2"
 end
 
 group :release do
