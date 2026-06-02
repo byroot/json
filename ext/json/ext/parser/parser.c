@@ -1439,6 +1439,7 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
                 return *rvalue_stack_peek(state->stack, 1);
 
             case JSON_PHASE_VALUE:
+                phase_value:
                 json_eat_whitespace(state);
 
                 switch (peek(state)) {
@@ -1571,6 +1572,7 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
                 break;
 
             case JSON_PHASE_KEY:
+                phase_key:
                 json_eat_whitespace(state);
                 if (RB_UNLIKELY(peek(state) != '"')) {
                     // The message differs for the first key vs. a key after a
@@ -1584,9 +1586,10 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
                 }
                 json_parse_string(state, config, true);
                 frame->phase = JSON_PHASE_COLON;
-                break;
+                goto phase_colon;
 
             case JSON_PHASE_COLON:
+            phase_colon:
                 json_eat_whitespace(state);
                 if (RB_UNLIKELY(peek(state) != ':')) {
                     // First colon (only the first pair's key is pushed, nothing
@@ -1601,7 +1604,7 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
                 frame->phase = JSON_PHASE_VALUE;
                 break;
 
-            case JSON_PHASE_COMMA:
+            case JSON_PHASE_COMMA: // TODO: split array and object comma
                 json_eat_whitespace(state);
 
                 if (frame->type == JSON_FRAME_ARRAY) {
@@ -1628,6 +1631,7 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
                             }
                         }
                         frame->phase = JSON_PHASE_VALUE;
+                        goto phase_value;
                         break;
                     }
 
@@ -1664,6 +1668,7 @@ static VALUE json_parse_any(JSON_ParserState *state, JSON_ParserConfig *config)
                         }
 
                         frame->phase = JSON_PHASE_KEY;
+                        goto phase_key;
                         break;
                     }
 
