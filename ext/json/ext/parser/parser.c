@@ -2411,6 +2411,7 @@ struct json_parse_any_args {
 
 static VALUE json_parse_any_resumable_safe0(RB_BLOCK_CALL_FUNC_ARGLIST(yielded_arg, _args))
 {
+    fprintf(stderr, "inside rb_catch_obj\n");
     struct json_parse_any_args *args = (struct json_parse_any_args *)_args;
     return (VALUE)json_parse_any(args->state, args->config, true);
 }
@@ -2418,7 +2419,10 @@ static VALUE json_parse_any_resumable_safe0(RB_BLOCK_CALL_FUNC_ARGLIST(yielded_a
 static VALUE json_parse_any_resumable_safe(VALUE _args)
 {
     struct json_parse_any_args *args = (struct json_parse_any_args *)_args;
+    fprintf(stderr, "about to call rb_catch_obj\n");
     VALUE result = rb_catch_obj(args->parser, json_parse_any_resumable_safe0, _args);
+    fprintf(stderr, "rb_catch_obj return value: ");
+    rb_p(result);
     return result == args->parser ? Qfalse : result;
 }
 
@@ -2494,7 +2498,13 @@ static VALUE cResumableParser_parse(VALUE self)
     };
     int status;
     const char *initial_cursor = parser->state.cursor;
-    parser->complete = rb_protect(json_parse_any_resumable_safe, (VALUE)&args, &status);
+    fprintf(stderr, "about to call rb_protect\n");
+    VALUE result = rb_protect(json_parse_any_resumable_safe, (VALUE)&args, &status);
+    fprintf(stderr, "rb_protect returned: ");
+    rb_p(result);
+    fprintf(stderr, "rb_protect rb_errinfo(): ");
+    rb_p(rb_errinfo());
+    parser->complete = result;
 
     if (status) {
         parser->complete = true; // a parse error is considered complete
