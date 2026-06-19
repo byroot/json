@@ -2,7 +2,6 @@
 require 'mkmf'
 
 $defs << "-DJSON_DEBUG" if ENV.fetch("JSON_DEBUG", "0") != "0"
-$defs << "-DJSON_WORKAROUND_RB_CATCH_BUG" if RUBY_ENGINE == 'truffleruby'
 
 have_func("rb_enc_interned_str", "ruby/encoding.h") # RUBY_VERSION >= 3.0
 have_func("rb_str_to_interned_str", "ruby.h") # RUBY_VERSION >= 3.0
