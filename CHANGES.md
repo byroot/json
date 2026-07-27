@@ -8,6 +8,7 @@
 - Removed `JSON.load_default_options`.
 - Removed `JSON.unsafe_load_default_options`.
 - Removed `JSON.dump_default_options`.
+- Removed `JSON::State#[]` and `JSON::State#[]=`.
 
 ### 2026-07-31 (2.21.2)
 
