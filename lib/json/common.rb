@@ -345,7 +345,7 @@ module JSON
     if State === opts
       opts.generate(obj)
     else
-      State.generate(obj, opts, nil)
+      State.generate(obj, opts.frozen? ? opts : opts.dup, nil)
     end
   end
 
@@ -402,6 +402,7 @@ module JSON
           raise TypeError, "can't convert #{opts.class} into Hash"
         end
       end
+
       options = options.merge(opts)
     end
 
@@ -691,7 +692,7 @@ module JSON
   end
 
   # :call-seq:
-  #   JSON.dump(obj, io = nil, limit = nil)
+  #   JSON.dump(obj, io = nil, options = nil)
   #
   # Dumps +obj+ as a \JSON string, i.e. calls generate on the object and returns the result.
   #
@@ -717,38 +718,24 @@ module JSON
   #   puts File.read(path)
   # Output:
   #   {"foo":[0,1],"bar":{"baz":2,"bat":3},"bam":"bad"}
-  def dump(obj, anIO = nil, limit = nil, kwargs = nil)
+  def dump(obj, anIO = nil, kwargs = nil)
     if kwargs.nil?
-      if limit.nil?
-        if anIO.is_a?(Hash)
-          kwargs = anIO
-          anIO = nil
-        end
-      elsif limit.is_a?(Hash)
-        kwargs = limit
-        limit = nil
+      if anIO.is_a?(Hash)
+        kwargs = anIO
+        anIO = nil
       end
     end
 
-    unless anIO.nil?
-      if anIO.respond_to?(:to_io)
-        anIO = anIO.to_io
-      elsif limit.nil? && !anIO.respond_to?(:write)
-        anIO, limit = nil, anIO
-      end
+    if anIO&.respond_to?(:to_io)
+      anIO = anIO.to_io
     end
 
     opts = {
       allow_nan: true,
-      max_nesting: limit,
     }
     opts.merge!(kwargs) if kwargs
 
-    begin
-      State.generate(obj, opts, anIO)
-    rescue JSON::NestingError
-      raise ArgumentError, "exceed depth limit"
-    end
+    State.generate(obj, opts, anIO)
   end
 
   # JSON::Coder holds a parser and generator configuration.
@@ -775,6 +762,13 @@ module JSON
       decimal_class
     ).freeze
     private_constant :PARSER_OPTIONS
+
+    EXCLUDED_GENERATOR_OPTIONS = (PARSER_OPTIONS - %i(
+      max_nesting
+      allow_nan
+      allow_duplicate_key
+    )).freeze
+    private_constant :EXCLUDED_GENERATOR_OPTIONS
 
     # :call-seq:
     #   JSON.new(options = nil, &block)
@@ -808,8 +802,9 @@ module JSON
       parser_options[:on_load] = on_load if on_load
       @parser_config = Ext::Parser::Config.new(parser_options).freeze
 
+      generator_options = options.reject { |k, _| EXCLUDED_GENERATOR_OPTIONS.include?(k) }
       @state = State.new(
-        **options,
+        **generator_options,
         strict: true,
         as_json: as_json,
       ).freeze
