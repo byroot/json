@@ -10,6 +10,7 @@ group :development do
   gem "test-unit"
   gem "test-unit-ruby-core"
   gem "simplecov", require: false
+  gem "prism" # for simplecov
 
   if RUBY_VERSION < "3.1."
     # Ref: https://github.com/test-unit/test-unit/pull/329
